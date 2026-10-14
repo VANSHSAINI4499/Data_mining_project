@@ -229,7 +229,18 @@ def test_event_detail_raw_and_provenance(
     c = analyst.client
     event = c.get("/api/v1/events", params={**RANGE, "event_type": "auth"}).json()["items"][0]
     detail = c.get(f"/api/v1/events/{event['event_id']}").json()
-    assert set(detail) == {"event_id", "observed", "provenance", "ground_truth", "model_outputs"}
+    assert set(detail) == {
+        "event_id",
+        "observed",
+        "provenance",
+        "ground_truth",
+        "model_outputs",
+        "threat_intel",
+        "alerts",
+        "analyst",
+    }
+    assert detail["threat_intel"] == {"matches": [], "attack_techniques": []}
+    assert detail["alerts"] == [] and detail["analyst"] == {"feedback": []}
     assert detail["model_outputs"] == {"classifications": []}  # nothing scored yet
     assert detail["observed"]["user_name"] == "Alice"
     prov = detail["provenance"]

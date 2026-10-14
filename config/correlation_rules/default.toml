@@ -1,0 +1,91 @@
+# Default correlation rules (ATTACK_CORRELATION.md §4). Loaded by `cti seed-reference`;
+# editing a rule through the API creates a new version. Thresholds are starting points to be
+# tuned with analyst feedback.
+
+[[rule]]
+key = "ti_match_active"
+version = 1
+name = "Traffic to an active threat-intelligence indicator"
+description = "An internal source contacted a value listed by a feed (active indicator, confidence >= 50)."
+entity_type = "src_ip"
+window = "1h"
+base_severity = "high"
+[[rule.steps]]
+id = "match"
+evidence = "indicator_match"
+where = { min_confidence = 50, indicator_state = "active" }
+min_count = 1
+
+[[rule]]
+key = "bruteforce_then_success"
+version = 1
+name = "Repeated authentication failures followed by a success"
+description = "Many failed logins for one account then a success within the window."
+entity_type = "account"
+window = "15m"
+base_severity = "high"
+[[rule.steps]]
+id = "failures"
+evidence = "event"
+where = { event_type = "auth", auth_result = "failure" }
+min_count = 10
+[[rule.steps]]
+id = "success"
+evidence = "event"
+where = { event_type = "auth", auth_result = "success" }
+min_count = 1
+after = "failures"
+
+[[rule]]
+key = "recon_then_attack"
+version = 1
+name = "Reconnaissance followed by another attack category"
+description = "Flows classified as reconnaissance, then other non-benign classifications from the same source."
+entity_type = "src_ip"
+window = "2h"
+base_severity = "medium"
+[[rule.steps]]
+id = "recon"
+evidence = "classification_result"
+where = { predicted_category = "RECONNAISSANCE", min_predicted_score = 0.6 }
+min_count = 1
+[[rule.steps]]
+id = "attack"
+evidence = "classification_result"
+where = { exclude_benign = true, predicted_category = ["DOS", "DDOS", "BRUTE_FORCE", "WEB_ATTACK", "BOTNET", "INFILTRATION", "EXPLOIT", "BACKDOOR", "SHELLCODE", "WORM", "FUZZING", "ANALYSIS", "GENERIC", "OTHER_MALICIOUS"], min_predicted_score = 0.6 }
+min_count = 1
+after = "recon"
+
+[[rule]]
+key = "anomaly_with_malicious_classification"
+version = 1
+name = "Unusual behaviour together with a malicious classification"
+description = "A flagged anomaly window and a non-benign classification for the same source within the window."
+entity_type = "src_ip"
+window = "1h"
+base_severity = "medium"
+[[rule.steps]]
+id = "anomaly"
+evidence = "anomaly_result"
+where = {}
+min_count = 1
+[[rule.steps]]
+id = "classification"
+evidence = "classification_result"
+where = { exclude_benign = true, min_predicted_score = 0.6 }
+min_count = 1
+
+[[rule]]
+key = "repeated_ids_signature"
+version = 1
+name = "Repeated IDS signature from one source"
+description = "At least five IDS alerts with the same signature from one source within an hour."
+entity_type = "src_ip"
+window = "1h"
+base_severity = "low"
+[[rule.steps]]
+id = "alerts"
+evidence = "event"
+where = { event_type = "ids_alert" }
+min_count = 5
+same = "signature_id"

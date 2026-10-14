@@ -1,6 +1,22 @@
 """ORM models. Importing this package registers every table on ``Base.metadata``."""
 
 from app.models.base import Base
+from app.models.investigation import (
+    Alert,
+    AlertEvidence,
+    AnalystFeedback,
+    AttackCategoryTechnique,
+    AttackTechnique,
+    CaseAlert,
+    CaseTimelineEntry,
+    CorrelationRule,
+    IncidentCase,
+    IndicatorMatch,
+    TiFeed,
+    TiFeedRun,
+    TiIndicator,
+    TiIndicatorVersion,
+)
 from app.models.ml import (
     AnomalyResult,
     ClassificationResult,
@@ -22,12 +38,20 @@ from app.models.warehouse import (
 )
 
 __all__ = [
+    "Alert",
+    "AlertEvidence",
+    "AnalystFeedback",
     "AnomalyResult",
     "AppUser",
+    "AttackCategoryTechnique",
+    "AttackTechnique",
     "AuditLog",
     "AuthSession",
     "Base",
+    "CaseAlert",
+    "CaseTimelineEntry",
     "ClassificationResult",
+    "CorrelationRule",
     "DataQualityResult",
     "DimAsset",
     "DimAttackCategory",
@@ -35,6 +59,8 @@ __all__ = [
     "DimSource",
     "EventGroundTruth",
     "FactSecurityEvent",
+    "IncidentCase",
+    "IndicatorMatch",
     "IngestionBatch",
     "Job",
     "MlModel",
@@ -42,4 +68,8 @@ __all__ = [
     "MlTrainingRun",
     "RawRecord",
     "RejectedRecord",
+    "TiFeed",
+    "TiFeedRun",
+    "TiIndicator",
+    "TiIndicatorVersion",
 ]

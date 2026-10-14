@@ -1,0 +1,60 @@
+# Canonical category -> MITRE ATT&CK technique suggestions (THREAT_INTELLIGENCE.md §9).
+# Applied after `cti attack-import`; IDs absent, revoked, or deprecated in the imported
+# ATT&CK version are reported and skipped. These are suggestions with stated confidence, not
+# confirmed adversary behaviour. Categories without a defensible mapping are left unmapped.
+
+version = 1
+
+[[mapping]]
+category = "RECONNAISSANCE"
+technique_id = "T1046"
+confidence = "medium"
+rationale = "Port scans and service probing correspond to Network Service Discovery."
+
+[[mapping]]
+category = "RECONNAISSANCE"
+technique_id = "T1595"
+confidence = "medium"
+rationale = "Externally sourced scanning corresponds to Active Scanning."
+
+[[mapping]]
+category = "BRUTE_FORCE"
+technique_id = "T1110"
+confidence = "high"
+rationale = "Credential guessing is Brute Force."
+
+[[mapping]]
+category = "DOS"
+technique_id = "T1498"
+confidence = "medium"
+rationale = "Network-level denial of service; depends on the tool and layer."
+
+[[mapping]]
+category = "DOS"
+technique_id = "T1499"
+confidence = "medium"
+rationale = "Application or host resource exhaustion (e.g., slow HTTP attacks)."
+
+[[mapping]]
+category = "DDOS"
+technique_id = "T1498"
+confidence = "medium"
+rationale = "Volumetric distributed attacks."
+
+[[mapping]]
+category = "WEB_ATTACK"
+technique_id = "T1190"
+confidence = "medium"
+rationale = "Injection, XSS, and similar attacks against web applications."
+
+[[mapping]]
+category = "EXPLOIT"
+technique_id = "T1190"
+confidence = "low"
+rationale = "The dataset category is broad; public-facing exploitation is the closest fit."
+
+[[mapping]]
+category = "BOTNET"
+technique_id = "T1071"
+confidence = "low"
+rationale = "Bot command-and-control commonly uses application-layer protocols; weak link."

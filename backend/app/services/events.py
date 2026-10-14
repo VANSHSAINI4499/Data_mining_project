@@ -16,7 +16,7 @@ from app.ingestion.normalize import parse_ip
 from app.repositories import events as repo
 from app.repositories import ml as ml_repo
 from app.repositories.events import EventFilters
-from app.services import classification
+from app.services import classification, investigations, threat_intel
 
 __all__ = ["EventFilters"]
 
@@ -152,8 +152,8 @@ def detail(session: Session, event_id: int, event_time: datetime | None) -> dict
         truth = repo.get_ground_truth(session, event.event_id, event.event_time)
         result: dict[str, Any] = {
             "event_id": str(event.event_id),
-            # Observed facts only. Model outputs, threat intel, alerts, and analyst feedback
-            # are added to this response by the phases that create them.
+            # Observed facts; model outputs, threat-intel matches, alerts, and analyst
+            # conclusions are kept in separate, labelled sections below.
             "observed": {name: getattr(event, name) for name in OBSERVED_FIELDS},
             "provenance": {
                 "source": {
@@ -181,6 +181,21 @@ def detail(session: Session, event_id: int, event_time: datetime | None) -> dict
                 ),
             },
         }
+        predicted = [
+            c["predicted_category"]
+            for c in result["model_outputs"]["classifications"]
+            if c["model"]["status"] == "active" and c["predicted_category"]
+        ]
+        # Indicator matches mean a value appears on a list, not proof of compromise.
+        result["threat_intel"] = threat_intel.event_context(
+            session,
+            event.event_id,
+            event.event_time,
+            predicted,
+            truth[1] if truth is not None else None,
+        )
+        result["alerts"] = investigations.alerts_for_event(session, event.event_id)
+        result["analyst"] = {"feedback": investigations.feedback_for_event(session, event.event_id)}
         if truth is not None:
             gt, code = truth
             result["ground_truth"] = {

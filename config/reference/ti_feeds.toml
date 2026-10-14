@@ -1,0 +1,11 @@
+# Default threat-intelligence feeds created by `cti seed-reference` (only when missing).
+# Feeds are optional: the platform runs with zero feeds. Remote (TAXII) feeds are configured
+# by an admin later; `credentials_ref` would name an environment variable, never a secret.
+
+[[feed]]
+feed_key = "local-csv"
+name = "Local CSV indicator imports"
+feed_type = "csv_file"
+reliability = "C"
+default_confidence = 50
+default_ttl_days = 90

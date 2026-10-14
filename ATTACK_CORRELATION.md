@@ -53,7 +53,7 @@ after = "failures"              # ordering constraint within the window
 DSL constraints (validated by a Pydantic schema; invalid rules are rejected with 422):
 
 - `evidence` ∈ {`event`, `classification_result`, `anomaly_result`, `indicator_match`}.
-- `where` keys must be on a per-evidence-type **allowlist** of canonical fields (e.g., `event_type`, `auth_result`, `dst_port`, `signature_id`, `predicted_category`, `min_predicted_score`, `exclude_benign`, `min_score_percentile`, `min_confidence`, `indicator_state`). Operators: equality, `in` (list), `min_*`/`max_*` thresholds. No free-form SQL, expressions, or regex.
+- `where` keys must be on a per-evidence-type **allowlist** of canonical fields (e.g., `event_type`, `auth_result`, `dst_port`, `signature_id`, `predicted_category`, `min_predicted_score`, `exclude_benign`, `min_score_percentile`, `min_confidence`, `indicator_state`). Operators: equality, `in` (list), `min_*`/`max_*` thresholds. No free-form SQL, expressions, or regex. An `event` step may also set `same` (`signature_id`, `dst_port`, or `dst_ip`) to require that `min_count` items share one value of that field.
 - `window` ∈ {`5m`, `15m`, `1h`, `2h`, `6h`, `24h`}; `min_count` ≥ 1; `after` references an earlier step.
 - Rules compile to parameterised SQLAlchemy queries.
 

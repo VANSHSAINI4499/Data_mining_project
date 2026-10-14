@@ -3,18 +3,21 @@
 from __future__ import annotations
 
 import tomllib
+import uuid
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import REPO_ROOT
 from app.core.errors import ValidationFailedError
+from app.models import TiFeed
 from app.repositories import reference as reference_repo
-from app.services import audit
+from app.services import audit, correlation
 from app.services.actors import Actor
 
 REFERENCE_DIR = REPO_ROOT / "config" / "reference"
@@ -26,6 +29,8 @@ class SeedResult:
     categories_updated: int
     sources_created: int
     sources_existing: int
+    feeds_created: int = 0
+    rules_created: int = 0
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -70,6 +75,14 @@ def seed_reference(
                 src_created += 1
             else:
                 src_existing += 1
-        result = SeedResult(cat_created, cat_updated, src_created, src_existing)
+        feeds_created = 0
+        for feed in _load(reference_dir / "ti_feeds.toml").get("feed", []):
+            if session.scalar(select(TiFeed).where(TiFeed.feed_key == feed["feed_key"])) is None:
+                session.add(TiFeed(feed_id=uuid.uuid4(), **feed))
+                feeds_created += 1
+        rules_created = correlation.seed_default_rules(session, actor)
+        result = SeedResult(
+            cat_created, cat_updated, src_created, src_existing, feeds_created, rules_created
+        )
         audit.record(session, actor, "reference.seed", details=result.__dict__)
     return result

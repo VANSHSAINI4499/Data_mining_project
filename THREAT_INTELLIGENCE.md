@@ -124,7 +124,7 @@ Reference: MITRE ATT&CK — <https://attack.mitre.org/> (verified; v20 was the c
 
 ## 10. Feed updates, retries, and rate limits
 
-- Feed syncs run as jobs (`POST /api/v1/threat-intel/feeds/{feed_id}/sync`, scheduled polling in Phase 8).
+- Feed syncs run as jobs (`POST /api/v1/threat-intel/feeds/{feed_id}/sync`, scheduled polling in Phase 8). In the current build TAXII polling is not implemented: the sync endpoint returns 409 and indicators are loaded from CSV / STIX files (`POST /api/v1/threat-intel/imports`, `cti ti-import`).
 - Retries: transient network errors and HTTP 5xx → up to 3 attempts with exponential back-off (30 s, 2 min, 10 min) plus jitter. HTTP 429 → honour `Retry-After` (capped at 1 h), else back-off.
 - Per-feed minimum poll interval (default 60 min) prevents hammering providers; manual sync is rejected with 409 if a sync is already running or the last one started < 5 min ago.
 - 4xx other than 429 (e.g., 401/403/404) → no retry; feed `last_error` set; feed remains enabled but marked unhealthy.

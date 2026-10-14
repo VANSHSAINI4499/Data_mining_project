@@ -11,6 +11,7 @@ import json
 import signal
 import sys
 import threading
+from datetime import datetime
 from pathlib import Path
 from types import FrameType
 
@@ -92,7 +93,8 @@ def cmd_seed_reference(args: argparse.Namespace) -> int:
     print(
         f"attack categories: {result.categories_created} created, "
         f"{result.categories_updated} updated; sources: {result.sources_created} created, "
-        f"{result.sources_existing} already present"
+        f"{result.sources_existing} already present; feeds: {result.feeds_created} created; "
+        f"correlation rules: {result.rules_created} created"
     )
     return 0
 
@@ -328,6 +330,88 @@ def cmd_artifacts_gc(args: argparse.Namespace) -> int:
     return 0
 
 
+def _aware(value: str, name: str) -> datetime:
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        raise SystemExit(f"error: --{name} needs a timezone offset, e.g. 2026-01-01T00:00:00Z")
+    return parsed
+
+
+def cmd_attack_import(args: argparse.Namespace) -> int:
+    from app.services import threat_intel
+
+    data = Path(args.path).read_bytes()
+    with get_session_factory()() as session:
+        result = threat_intel.import_attack(session, CLI_ACTOR, data)
+    print(json.dumps(result, default=str))
+    return 0
+
+
+def cmd_ti_import(args: argparse.Namespace) -> int:
+    from app.services import threat_intel
+
+    settings = get_settings()
+    path = Path(args.path)
+    factory = get_session_factory()
+    with factory() as session:
+        feed_id = threat_intel.feed_id_for_key(session, args.feed)
+    with factory() as session:
+        run = threat_intel.start_import(
+            session,
+            settings,
+            CLI_ACTOR,
+            feed_id=feed_id,
+            fmt=args.format,
+            filename=path.name,
+            data=path.read_bytes(),
+            enqueue=False,
+        )
+    done = threat_intel.run_import(factory, settings, run.feed_run_id)
+    print(
+        json.dumps(
+            {
+                "feed_run_id": str(done.feed_run_id),
+                "status": done.status,
+                "received": done.indicators_received,
+                "created": done.indicators_created,
+                "updated": done.indicators_updated,
+                "rejected": done.indicators_rejected,
+            }
+        )
+    )
+    return 0
+
+
+def cmd_match_indicators(args: argparse.Namespace) -> int:
+    from app.services import threat_intel
+
+    if not args.batch_id and not (args.from_ and args.to):
+        raise SystemExit("error: give --batch-id or both --from and --to")
+    params = {
+        "from": _aware(args.from_, "from").isoformat() if args.from_ else None,
+        "to": _aware(args.to, "to").isoformat() if args.to else None,
+        "batch_ids": args.batch_id or [],
+        "include_expired": args.include_expired,
+    }
+    print(json.dumps(threat_intel.run_match(get_session_factory(), params, None)))
+    return 0
+
+
+def cmd_correlate(args: argparse.Namespace) -> int:
+    from app.services import correlation
+
+    with get_session_factory()() as session:
+        summary = correlation.run_correlation(
+            session,
+            CLI_ACTOR,
+            _aware(args.from_, "from"),
+            _aware(args.to, "to"),
+            args.rule or None,
+        )
+    print(json.dumps(summary, default=str))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cti", description="CTI Warehouse operator commands")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -341,7 +425,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.set_defaults(func=cmd_create_admin)
 
-    p = sub.add_parser("seed-reference", help="load attack categories and default sources")
+    p = sub.add_parser(
+        "seed-reference", help="load attack categories, sources, default feed and rules"
+    )
     p.set_defaults(func=cmd_seed_reference)
 
     p = sub.add_parser("ingest", help="import a file under the import root (runs inline)")
@@ -388,6 +474,29 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("action", choices=["gc"])
     p.add_argument("--dry-run", action="store_true")
     p.set_defaults(func=cmd_artifacts_gc)
+
+    p = sub.add_parser("attack-import", help="import a MITRE ATT&CK Enterprise STIX bundle")
+    p.add_argument("path")
+    p.set_defaults(func=cmd_attack_import)
+
+    p = sub.add_parser("ti-import", help="import a CSV or STIX 2.1 indicator file (inline)")
+    p.add_argument("--feed", required=True, help="feed_key, e.g. local-csv")
+    p.add_argument("--format", required=True, choices=["csv", "stix"])
+    p.add_argument("path")
+    p.set_defaults(func=cmd_ti_import)
+
+    p = sub.add_parser("match-indicators", help="match indicators against stored events")
+    p.add_argument("--batch-id", action="append")
+    p.add_argument("--from", dest="from_")
+    p.add_argument("--to")
+    p.add_argument("--include-expired", action="store_true")
+    p.set_defaults(func=cmd_match_indicators)
+
+    p = sub.add_parser("correlate", help="run enabled correlation rules over a time range")
+    p.add_argument("--from", dest="from_", required=True)
+    p.add_argument("--to", required=True)
+    p.add_argument("--rule", action="append", help="limit to this rule_key (repeatable)")
+    p.set_defaults(func=cmd_correlate)
 
     p = sub.add_parser("worker", help="run the background job worker")
     p.add_argument("--heartbeat-file", help="file touched every poll interval (health checks)")

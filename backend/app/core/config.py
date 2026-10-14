@@ -53,6 +53,8 @@ class Settings(BaseSettings):
     job_heartbeat_seconds: int = Field(default=15, ge=1)
     job_timeout_seconds: int = Field(default=600, ge=10)
     worker_poll_seconds: float = Field(default=2.0, gt=0)
+    # Days of history re-matched after an indicator import changes indicators (0 disables).
+    ti_retrohunt_days: int = Field(default=30, ge=0, le=3650)
 
     @field_validator("cors_origins", mode="before")
     @classmethod

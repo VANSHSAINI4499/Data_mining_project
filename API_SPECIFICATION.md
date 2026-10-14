@@ -192,8 +192,9 @@ There is **no** endpoint to upload model artifacts.
 | GET | `/threat-intel/feeds` | viewer | Feeds with health. |
 | POST | `/threat-intel/feeds` | admin | Create feed (`credentials_ref` is an env var **name**). |
 | PATCH | `/threat-intel/feeds/{feed_id}` | admin | Update / enable / disable. |
-| POST | `/threat-intel/feeds/{feed_id}/sync` | admin | → 202 job (409 if running or too soon). |
+| POST | `/threat-intel/feeds/{feed_id}/sync` | admin | Planned → 202 job. **Current build:** TAXII polling is not implemented, so this returns 409 with a pointer to file imports (deferred to Phase 8). |
 | POST | `/threat-intel/imports` | admin | Upload CSV or STIX 2.1 bundle `{file, feed_id, format}` → 202 job. |
+| GET | `/threat-intel/imports/{feed_run_id}` | viewer | Import run status and report: counts received/created/updated/rejected, rejected rows, unsupported STIX patterns. |
 | GET | `/threat-intel/indicators` | viewer | Filters `indicator_type`, `feed_id`, `state` (`active`/`expired`/`revoked`), `min_confidence`, `value` (exact normalised). Values returned raw and `display_value` defanged. |
 | POST | `/threat-intel/indicators` | admin | Manual indicator. |
 | GET | `/threat-intel/indicators/{indicator_id}` | viewer | Detail + version history + match count. |

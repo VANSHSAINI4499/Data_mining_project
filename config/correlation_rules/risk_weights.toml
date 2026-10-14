@@ -1,0 +1,32 @@
+# risk_v1 weights (ATTACK_CORRELATION.md §6). The score is a transparent additive heuristic,
+# not a probability. Change values by bumping `version`; alerts store the version they used.
+
+version = "risk_v1"
+
+[caps]
+classification = 30
+anomaly = 20
+threat_intel = 30
+repetition = 10
+rule_severity = 10
+
+[rule_severity]
+low = 0.25
+medium = 0.5
+high = 0.75
+critical = 1.0
+
+[reliability]   # feed reliability grade -> weight (THREAT_INTELLIGENCE.md §3)
+A = 1.0
+B = 0.8
+C = 0.6
+D = 0.4
+E = 0.2
+F = 0.3
+
+[asset_multiplier]
+unknown = 1.0
+low = 0.8
+medium = 1.0
+high = 1.2
+critical = 1.4

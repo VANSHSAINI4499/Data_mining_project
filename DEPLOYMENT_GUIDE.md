@@ -162,9 +162,9 @@ docker compose down                 # keep volumes; `down -v` DELETES the databa
 
 Compose builds its own database URLs from `POSTGRES_*` (host `postgres`), so the native `CTI_DATABASE_URL` in `.env` is not used inside containers. Stop a native PostgreSQL on port 5432 first, or change the published port.
 
-## 12. Data import (Phase 2, implemented), ML and threat intelligence (Phases 3–5)
+## 12. Data import, ML, threat intelligence, and correlation (Phases 2–5, implemented)
 
-Run from the repository root. The Phase 2 commands (`seed-reference`, `generate-synthetic`, `ingest`) work today; the others are added by later phases:
+Run from the repository root. All commands below run inline (no worker needed); the equivalent API endpoints enqueue jobs for the worker. Timestamps need a timezone offset (e.g. `2026-01-01T00:00:00Z`):
 
 ```bash
 uv run --project backend cti seed-reference
@@ -175,7 +175,8 @@ uv run --project backend cti ingest --source unsw-nb15 --adapter unsw_nb15 --var
 uv run --project backend cti train classifier --config config/ml/classifier_default.toml --batch-id <uuid>
 uv run --project backend cti train anomaly --config config/ml/anomaly_account_1h.toml
 uv run --project backend cti ti-import --feed local-csv --format csv data/samples/generated/synthetic_indicators.csv
-uv run --project backend cti correlate --from <ts> --to <ts>
+uv run --project backend cti match-indicators --from 2026-01-01T00:00:00Z --to 2026-01-11T00:00:00Z
+uv run --project backend cti correlate --from 2026-01-01T00:00:00Z --to 2026-01-11T00:00:00Z
 ```
 
 Public datasets are downloaded manually (UNSW-NB15: <https://research.unsw.edu.au/projects/unsw-nb15-dataset>; CIC-IDS2017: <https://www.unb.ca/cic/datasets/ids-2017.html>) into `data/external/<dataset>/` (git-ignored), respecting their licence and citation terms. An assumed event date is a recorded assumption; such events are classification-only ([DATA_INGESTION.md §4](DATA_INGESTION.md#4-source-adapters)). Equivalent API endpoints return `202` with a job ID ([API_SPECIFICATION.md](API_SPECIFICATION.md#59-classification)).
@@ -197,7 +198,7 @@ Public datasets are downloaded manually (UNSW-NB15: <https://research.unsw.edu.a
 | `cti worker [--heartbeat-file F] [--once]` | Run the job worker (`--once`: run at most one job, then exit). | 1 |
 | `cti worker-healthcheck --heartbeat-file F [--max-age-seconds N]` | Exit 0 if the worker heartbeat is fresh. | 1 |
 | `cti diagnostic-job [--steps N] [--sleep-seconds S] [--fail] [--transient-failures N]` | Enqueue a `diagnostic` job that exercises the queue (success, failure, retry, progress). | 1 |
-| `cti seed-reference` | Seed attack categories and default sources (`synthetic`, `cicids2017`, `unsw-nb15`) from `config/reference/` (idempotent; never overwrites user edits). Phase 5 adds feeds and rules. | 2 |
+| `cti seed-reference` | Seed attack categories and default sources (`synthetic`, `cicids2017`, `unsw-nb15`) from `config/reference/` (idempotent; never overwrites user edits), plus the `local-csv` indicator feed (`config/reference/ti_feeds.toml`) and the five default correlation rules (`config/correlation_rules/default.toml`) when missing. | 2, 5 |
 | `cti ingest --source S [--adapter A] [--variant V] [--assume-event-date D] [--timezone TZ] [--date-order dmy\|mdy] [--dataset-partition training\|testing] PATH` | Import a file under `CTI_IMPORT_ROOT` (inline, no worker needed). Exit code 1 if the batch failed. | 2 |
 | *(not provided)* | Asset inventory import is API-only: `POST /api/v1/assets/import`. | 2 |
 | `cti generate-synthetic [--seed S] [--days D] [--flows-per-hour N] --out DIR` | Deterministic synthetic scenario: `events.jsonl`, `synthetic_indicators.csv`, `expected.json`. The committed sample is `data/samples/synthetic-seed42/`. | 2 |
@@ -207,9 +208,9 @@ Public datasets are downloaded manually (UNSW-NB15: <https://research.unsw.edu.a
 | `cti score anomaly --from T --to T [--name NAME \| --model-id ID]` | Score entity windows with an anomaly model inline. | 4 |
 | `cti models list\|promote\|archive\|reject [MODEL_ID] [--reason R]` | Registry operations (promotion applies the gate). | 3 |
 | `cti artifacts gc [--dry-run]` | Remove orphan artifact files. | 3 |
-| `cti attack-import PATH` | Load ATT&CK STIX bundle. | 5 |
-| `cti ti-import --feed F --format csv\|stix PATH` | Import indicators. | 5 |
-| `cti match-indicators [scope]` | Indicator matching. | 5 |
-| `cti correlate --from T --to T [--rule K]` | Correlation run. | 5 |
+| `cti attack-import PATH` | Load a MITRE ATT&CK Enterprise STIX bundle (downloaded manually) and apply `config/attack_mappings/category_techniques.toml`; prints applied and skipped mappings. | 5 |
+| `cti ti-import --feed F --format csv\|stix PATH` | Import indicators into feed `F` inline; prints created/updated/rejected counts. | 5 |
+| `cti match-indicators (--batch-id ID ... \| --from T --to T) [--include-expired]` | Exact indicator matching against stored events (idempotent). | 5 |
+| `cti correlate --from T --to T [--rule K ...]` | Run enabled correlation rules; prints per-rule evidence counts, matches, and alerts created/updated. | 5 |
 | `cti retention apply --dry-run\|--execute` | Apply retention policy (audited). | 7 |
 | `cti watch` | Inbox-folder incremental ingestion. | 8 |

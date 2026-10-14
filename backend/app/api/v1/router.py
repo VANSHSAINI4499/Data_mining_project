@@ -4,7 +4,20 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.v1 import anomalies, auth, events, health, ingestion, jobs, ml, sources, users
+from app.api.v1 import (
+    anomalies,
+    auth,
+    correlation,
+    events,
+    health,
+    ingestion,
+    investigations,
+    jobs,
+    ml,
+    sources,
+    threat_intel,
+    users,
+)
 from app.api.v1.router_prefix import API_PREFIX
 
 __all__ = ["API_PREFIX", "ROUTERS", "api_router"]
@@ -21,6 +34,9 @@ ROUTERS = (
     events.router,
     ml.router,
     anomalies.router,
+    threat_intel.router,
+    correlation.router,
+    investigations.router,
 )
 
 api_router = APIRouter(prefix=API_PREFIX)
