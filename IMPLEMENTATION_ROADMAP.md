@@ -14,6 +14,19 @@ flowchart LR
     P7 --> P8[Phase 8<br/>Temporal mining,<br/>incremental, drift]
 ```
 
+## Progress
+
+| Phase | Status | Commit | Notes |
+|---|---|---|---|
+| 1 | Complete (Docker verification AC-1.2D not run) | `57d353c` | Native setup verified. |
+| 2 | Complete except AC-2.8 (no public dataset present) | see `git log` | 9 adapters, DQ, events/analytics API, synthetic generator. |
+| 3 | Not started | | |
+| 4 | Not started | | |
+| 5 | Not started | | |
+| 6 | Not started | | |
+| 7 | Not started | | |
+| 8 | Not started | | |
+
 Phases 3 and 4 both depend only on Phase 2 and could be swapped, but they are done **sequentially** (3 then 4) to keep one phase in flight.
 
 **Cross-cutting rule:** each phase ships its own backend endpoints (with tests) for the features it adds, plus minimal frontend wiring where useful. Phase 6 completes the full dashboard against those endpoints. Authentication/RBAC are built in Phase 1 so no unprotected endpoint ever exists; Phase 7 hardens and verifies security.

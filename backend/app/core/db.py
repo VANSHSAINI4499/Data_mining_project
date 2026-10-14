@@ -16,9 +16,15 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import get_settings
 
+# Every session works in UTC regardless of the server's default timezone, so timestamps are
+# read back in UTC (API_SPECIFICATION.md §1) and date arithmetic in SQL is UTC-based.
+SESSION_OPTIONS = {"options": "-c timezone=UTC"}
+
 
 def make_engine(url: str) -> Engine:
-    return create_engine(url, pool_pre_ping=True, pool_size=5, max_overflow=5)
+    return create_engine(
+        url, pool_pre_ping=True, pool_size=5, max_overflow=5, connect_args=SESSION_OPTIONS
+    )
 
 
 @lru_cache

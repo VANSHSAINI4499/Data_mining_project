@@ -42,6 +42,12 @@ class Settings(BaseSettings):
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5173"]
     upload_dir: Path = Path(".local/uploads")
     artifact_dir: Path = Path(".local/artifacts")
+    max_upload_mb: int = Field(default=50, ge=1, le=1024)
+    import_root: Path = Path("data")
+    max_reject_ratio: float = Field(default=0.2, gt=0, le=1)
+    ingest_chunk_size: int = Field(default=5000, ge=1, le=100_000)
+    max_query_days: int = Field(default=400, ge=1)
+    max_agg_days: int = Field(default=400, ge=1)
     max_concurrent_jobs: int = Field(default=2, ge=1, le=16)
     job_heartbeat_seconds: int = Field(default=15, ge=1)
     job_timeout_seconds: int = Field(default=600, ge=10)
@@ -54,7 +60,7 @@ class Settings(BaseSettings):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
         return value
 
-    @field_validator("upload_dir", "artifact_dir")
+    @field_validator("upload_dir", "artifact_dir", "import_root")
     @classmethod
     def _resolve_dir(cls, value: Path) -> Path:
         # Relative paths are resolved against the repository root so that the API, worker,

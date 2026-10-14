@@ -123,7 +123,7 @@ Reference: <https://docs.suricata.io/en/latest/output/eve/eve-json-format.html> 
 - One JSON object per line. Common fields: `timestamp`, `flow_id`, `event_type`, `src_ip`, `src_port`, `dest_ip`, `dest_port`, `proto`, `app_proto`.
 - `alert` → `ids_alert`: `alert.signature_id`, `alert.signature`, `alert.category`, `alert.severity` → `signature_id`, `signature`, `alert_category`, `source_severity`.
 - `flow` → `network_flow`: `flow.pkts_toserver/pkts_toclient`, `flow.bytes_toserver/bytes_toclient`, `flow.start`, `flow.end`.
-- `dns` → `dns`, `http` → `http`: the location of query names and URLs differs between Suricata versions/configurations; field paths are configured in `config/datasets/suricata_eve.toml` and verified against the user's sample, not assumed.
+- `dns` → `dns`, `http` → `http`: the location of query names differs between Suricata versions; the adapter tries a fixed, documented list of paths (`dns.rrname`, `dns.queries[0].rrname`, `dns.query[0].rrname`) and leaves the field NULL if none is present — it never guesses a value. Verify against your sensor's output.
 - Other event types → `other` with the full object in `attributes`.
 - `flow_id` groups multiple events of the same flow; it is stored in `source_event_id` but is **not unique per event**. Fingerprint: `flow_id, event_type, timestamp, signature_id` (alerts) or `flow_id, event_type, timestamp`.
 
@@ -150,7 +150,7 @@ Order of operations per record:
 
 1. **Structural parse** (adapter) → `RawRecord` with `record_number`, `raw_payload`/`raw_text`, `record_sha256`.
 2. **Field mapping** to canonical names.
-3. **Type validation** with Pydantic `CanonicalEvent` model (strict types; rules in [DATA_DICTIONARY.md](DATA_DICTIONARY.md)).
+3. **Type validation** with explicit typed validators in `app/ingestion/normalize.py` (one validator per field kind, so each failure maps to exactly one rejection code; rules in [DATA_DICTIONARY.md](DATA_DICTIONARY.md)).
 4. **Normalisation:** timestamps → UTC `timestamptz`; IPs → canonical text form (IPv4-mapped IPv6 → IPv4); protocol names lowercase (`6` → `tcp`, `17` → `udp`, `1` → `icmp`); ports 0–65535; counters ≥ 0; strings trimmed and NUL bytes removed; `user_name` case preserved (a lowercase `user_name_normalized` is derived for matching).
 5. **Derived fields:** `date_key`, `event_hour`, `event_fingerprint`.
 6. **Label mapping** (labelled datasets only) → ground-truth row.
@@ -175,15 +175,22 @@ Order of operations per record:
 | `ENCODING_ERROR` | Undecodable bytes. |
 | `MISSING_REQUIRED_FIELD` | Required canonical field absent or empty. |
 | `INVALID_TIMESTAMP` | Unparseable timestamp. |
-| `TIMESTAMP_OUT_OF_RANGE` | Before 1990-01-01 or more than 24 h in the future. |
+| `TIMESTAMP_OUT_OF_RANGE` | Before 2000-01-01 (start of `dim_date`) or more than 24 h in the future. |
 | `INVALID_IP` | Required IP field invalid. |
 | `INVALID_PORT` | Required port outside 0–65535. |
 | `INVALID_NUMBER` | Required numeric field not finite or not a number. |
 | `NEGATIVE_COUNTER` | Bytes/packets/duration < 0 in a required field. |
-| `UNKNOWN_EVENT_TYPE` | Value not in the canonical `event_type` list. |
+| `UNKNOWN_EVENT_TYPE` | Value not in the canonical `event_type` list (or an unknown endpoint `event_action`). |
+| `INVALID_VALUE` | A required enumerated/structured value is invalid (e.g., `is_attack`, UNSW `label`). |
 | `UNSUPPORTED_VARIANT` | (batch-level) required columns missing. |
 | `TIMEZONE_NOT_CONFIGURED` | (batch-level) naive timestamps without configured source timezone. |
 | `ADAPTER_MISMATCH_SUSPECTED` | (batch-level) rejection ratio exceeded. |
+| `TIMESTAMP_FORMAT_AMBIGUOUS` | (batch-level) day/month order cannot be determined; pass `--date-order dmy\|mdy`. |
+| `MISSING_OPTION` | (batch-level) the variant needs an option, e.g. `--assume-event-date`. |
+| `FILE_CHANGED` / `FILE_NOT_FOUND` | (batch-level) the stored file no longer matches its registered SHA-256 / is gone. |
+| `FILE_TOO_LARGE` | (batch-level) a JSON-array file exceeds 256 MiB (use JSON lines). |
+| `ADAPTER_VERSION_CHANGED` | (batch-level) the installed adapter version differs from the registered one; upload again. |
+| `CANCELLED` | (batch-level) the job was cancelled; retry resumes after `last_committed_record`. |
 
 Rejected records keep their `raw_record` row and are visible in `GET /api/v1/ingestion/batches/{batch_id}/rejections` with sanitised details. Error details never echo more than 200 characters of the offending value.
 
@@ -239,3 +246,15 @@ For tests and demos, use the committed synthetic fixtures in `data/samples/` gen
 3. Add a small fixture file (synthetic or a few rows that you are licensed to commit) under `backend/tests/fixtures/ingestion/<name>/` including malformed examples.
 4. Add tests: header detection, mapping, rejection codes, fingerprint stability, idempotent re-import.
 5. Document it in §4 and any new fields in [DATA_DICTIONARY.md](DATA_DICTIONARY.md).
+
+## 13. Implementation notes (Phase 2)
+
+- **Record numbers** are 1-based ordinals of *data* records (header and blank lines are not counted). `record_sha256` covers the original bytes of the record (all physical lines of a multi-line CSV record); for JSON-array files it covers the canonical JSON of the element.
+- **Raw payload keys** for delimited files are the *normalised* header names (duplicates suffixed `__2`); the original → normalised map is stored in `ingestion_batch.metadata.header_map`.
+- **NUL bytes and unpaired surrogates** cannot be stored in PostgreSQL text/JSON; they are escaped visibly (`\x00`) in raw records and `raw_record.raw_nul_escaped` is set. Canonical text fields drop NUL bytes.
+- **Timestamps:** every database session runs in UTC. Naive timestamps require a timezone (source `default_timezone` or the batch `timezone` option) for *every* adapter; otherwise the batch fails with `TIMEZONE_NOT_CONFIGURED`. The timezone actually used is stored in `timezone_assumption`.
+- **CIC-IDS2017 timestamps** (`D/M/YYYY H:MM[:SS] [AM|PM]`): if day and month are both ≤ 12 and differ, `--date-order dmy|mdy` is required; values contradicting the given order are rejected. `Flow Duration` is converted from microseconds (CICFlowMeter convention — verify against your copy).
+- **UNSW-NB15 raw files** use the column list in `config/datasets/unsw_nb15_columns.toml`, which was transcribed without access to the files and must be verified; rows with a different field count are rejected (`WRONG_FIELD_COUNT`). Ports written as `0x…` are parsed as hexadecimal; `-` is NULL.
+- **`dst_port`** is optional for all event types (dataset files contain non-numeric ports); its null rate is a data-quality check for flow adapters.
+- **Asset inventory** import is synchronous (`POST /api/v1/assets/import`, ≤ 10 MB, `cti` command not yet provided). The first version of each asset is assumed valid from 2000-01-01 so historical events link to it; later changes open a new version at import time. Events are linked at load time only (importing assets later does not back-fill older events).
+- **Data-quality results** are derived data: re-running the checks replaces a batch's previous results.

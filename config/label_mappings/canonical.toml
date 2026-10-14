@@ -1,0 +1,24 @@
+# Label mapping for canonical-format sources (canonical_*, auth_jsonl, endpoint_jsonl,
+# synthetic data). `label_raw` must name a canonical category; matching uses the normalised
+# form (case-insensitive, punctuation and underscores treated as spaces). Anything else is
+# stored as `unmapped`, never guessed.
+
+version = 1
+
+[map]
+"BENIGN" = "BENIGN"
+"DOS" = "DOS"
+"DDOS" = "DDOS"
+"RECONNAISSANCE" = "RECONNAISSANCE"
+"BRUTE_FORCE" = "BRUTE_FORCE"
+"WEB_ATTACK" = "WEB_ATTACK"
+"BOTNET" = "BOTNET"
+"INFILTRATION" = "INFILTRATION"
+"EXPLOIT" = "EXPLOIT"
+"BACKDOOR" = "BACKDOOR"
+"SHELLCODE" = "SHELLCODE"
+"WORM" = "WORM"
+"FUZZING" = "FUZZING"
+"ANALYSIS" = "ANALYSIS"
+"GENERIC" = "GENERIC"
+"OTHER_MALICIOUS" = "OTHER_MALICIOUS"

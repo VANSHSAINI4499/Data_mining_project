@@ -2,7 +2,7 @@
 
 **A Cyber Threat Intelligence data warehouse for attack-pattern classification, anomaly mining, and threat correlation.**
 
-> **Status:** Phase 1 (foundation) of the [roadmap](IMPLEMENTATION_ROADMAP.md) is implemented: authentication and roles, the background job queue, health checks, migrations, and the dashboard shell. No security data features exist yet — ingestion arrives in Phase 2. It runs natively without Docker; the optional Docker Compose files have not yet been run.
+> **Status:** Phases 1–2 of the [roadmap](IMPLEMENTATION_ROADMAP.md) are implemented: authentication and roles, the job queue, migrations, the dashboard shell, and the warehouse with ingestion (9 adapters incl. CIC-IDS2017 and UNSW-NB15), data quality, event search, and aggregations. See [IMPLEMENTATION_ROADMAP.md](IMPLEMENTATION_ROADMAP.md#progress) for progress. It runs natively without Docker; the optional Docker Compose files have not yet been run.
 
 ## What it does
 

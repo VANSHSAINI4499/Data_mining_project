@@ -102,7 +102,7 @@ The `type` URIs are identifiers and need not resolve.
 | Method | Path | Role | Description |
 |---|---|---|---|
 | GET | `/assets` | viewer | Current assets; filter `criticality`, `q` (prefix on hostname/asset_id). |
-| POST | `/assets/import` | admin | Upload `asset_inventory_csv` → 202 job. |
+| POST | `/assets/import` | admin | Upload an asset inventory CSV (≤ 10 MB). Processed synchronously → `200 {created, updated, unchanged, rejected[]}` (small files; no job). |
 
 ### 5.6 Uploads and ingestion
 
@@ -291,3 +291,12 @@ In-process limits (single API process in the MVP; see [SECURITY_REQUIREMENTS.md]
 
 - Breaking changes (removing/renaming fields, changing types or semantics) require `/api/v2` or a deprecation period documented here; additive changes are allowed in `/api/v1`.
 - Frontend types in `frontend/src/api/types.ts` are updated in the same change as backend schemas.
+
+## 11. Implementation status
+
+| Group | Status |
+|---|---|
+| §5.1–§5.3 health, auth, users, jobs | Implemented (Phase 1). |
+| §5.4 adapters & sources, §5.5 assets, §5.6 uploads & batches, §5.17 data quality | Implemented (Phase 2). Upload endpoints also return `411` without `Content-Length`; the limit is enforced before the multipart body is parsed. |
+| §5.7 events, §5.8 aggregations | Implemented (Phase 2) with the filters available so far (`predicted_category`, `min_predicted_score`, `has_indicator_match`, `has_alert` arrive with the phases that create that data and are rejected as unknown parameters until then). Event detail currently returns `observed`, `provenance`, and `ground_truth`; `model_outputs`, `threat_intel`, `alerts`, and `analyst` keys are added by later phases. |
+| §5.9 onwards | Later phases. |

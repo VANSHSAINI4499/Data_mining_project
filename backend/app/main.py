@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
-from app.api.middleware import RequestContextMiddleware
+from app.api.middleware import RequestContextMiddleware, UploadLimitMiddleware
 from app.api.problems import install_problem_handlers
 from app.api.v1.router import API_PREFIX, api_router
 from app.core.config import Settings, get_settings
@@ -35,6 +35,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["Content-Type", "X-CSRF-Token", "X-Request-ID"],
         expose_headers=["X-Request-ID", "Retry-After"],
     )
+    app.add_middleware(UploadLimitMiddleware, max_bytes=settings.max_upload_mb * 1024 * 1024)
     # Added last so it is outermost: every response, including CORS and 500s, gets an ID.
     app.add_middleware(RequestContextMiddleware)
     app.include_router(api_router)

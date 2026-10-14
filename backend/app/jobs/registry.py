@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from app.jobs.diagnostic import run_diagnostic
+from app.jobs.ingestion import run_ingestion
 from app.jobs.runtime import JobHandler
 
 HANDLERS: dict[str, JobHandler] = {
     "diagnostic": run_diagnostic,
+    "ingestion.process_batch": run_ingestion,
 }

@@ -13,11 +13,29 @@ from sqlalchemy import Engine, create_engine, inspect, text
 from sqlalchemy.engine import make_url
 
 from app.models import Base
+from app.models.autogen import include_name, include_object
 from tests.conftest import alembic_config, require_db
 
 pytestmark = pytest.mark.integration
 
-EXPECTED_TABLES = {"app_user", "auth_session", "audit_log", "job", "dim_date", "alembic_version"}
+EXPECTED_TABLES = {
+    "app_user",
+    "auth_session",
+    "audit_log",
+    "job",
+    "dim_date",
+    "alembic_version",
+    "dim_source",
+    "dim_asset",
+    "dim_attack_category",
+    "ingestion_batch",
+    "raw_record",
+    "rejected_record",
+    "fact_security_event",
+    "fact_security_event_default",
+    "event_ground_truth",
+    "data_quality_result",
+}
 
 
 @pytest.fixture(scope="module")
@@ -61,6 +79,14 @@ def test_downgrade_to_base_and_upgrade_again(scratch_url: str, scratch_engine: E
     command.upgrade(cfg, "head")
     command.downgrade(cfg, "base")
     assert _tables(scratch_engine) <= {"alembic_version"}
+    with scratch_engine.connect() as conn:
+        leftovers = conn.execute(
+            text("SELECT count(*) FROM pg_proc WHERE proname = 'ensure_event_partitions'")
+        ).scalar_one()
+        seq = conn.execute(
+            text("SELECT to_regclass('fact_security_event_event_id_seq')")
+        ).scalar_one()
+    assert leftovers == 0 and seq is None
     command.upgrade(cfg, "head")
     assert _tables(scratch_engine) >= EXPECTED_TABLES
 
@@ -68,7 +94,14 @@ def test_downgrade_to_base_and_upgrade_again(scratch_url: str, scratch_engine: E
 def test_models_match_migrated_schema(scratch_url: str, scratch_engine: Engine) -> None:
     command.upgrade(alembic_config(scratch_url), "head")
     with scratch_engine.connect() as conn:
-        ctx = MigrationContext.configure(conn, opts={"compare_type": True})
+        ctx = MigrationContext.configure(
+            conn,
+            opts={
+                "compare_type": True,
+                "include_name": include_name,
+                "include_object": include_object,
+            },
+        )
         diff = compare_metadata(ctx, Base.metadata)
     assert diff == []
 

@@ -43,13 +43,27 @@ from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
 
 from app.core import clock  # noqa: E402
 from app.core.config import get_settings  # noqa: E402
-from app.core.db import get_session  # noqa: E402
+from app.core.db import SESSION_OPTIONS, get_session  # noqa: E402
 from app.core.security import Role  # noqa: E402
 from app.services import users as users_service  # noqa: E402
 from app.services.actors import CLI_ACTOR  # noqa: E402
 
 BACKEND_DIR = REPO_ROOT / "backend"
-APP_TABLES = ("auth_session", "audit_log", "job", "app_user")
+APP_TABLES = (
+    "event_ground_truth",
+    "fact_security_event",
+    "data_quality_result",
+    "rejected_record",
+    "raw_record",
+    "ingestion_batch",
+    "dim_asset",
+    "dim_source",
+    "dim_attack_category",
+    "auth_session",
+    "audit_log",
+    "job",
+    "app_user",
+)
 DEFAULT_PASSWORD = "correct-horse-battery-staple"
 
 
@@ -104,7 +118,7 @@ def _reset_clock() -> Iterator[None]:
 @pytest.fixture(scope="session")
 def engine() -> Iterator[Engine]:
     url = require_db()
-    eng = create_engine(url)
+    eng = create_engine(url, connect_args=SESSION_OPTIONS)
     with eng.begin() as conn:
         conn.execute(text("DROP SCHEMA public CASCADE"))
         conn.execute(text("CREATE SCHEMA public"))

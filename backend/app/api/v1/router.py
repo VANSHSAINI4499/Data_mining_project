@@ -4,13 +4,22 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.v1 import auth, health, jobs, users
+from app.api.v1 import auth, events, health, ingestion, jobs, sources, users
+from app.api.v1.router_prefix import API_PREFIX
 
-API_PREFIX = "/api/v1"
+__all__ = ["API_PREFIX", "ROUTERS", "api_router"]
 
 # Every endpoint router, in registration order. The authorization test enumerates these
 # (and cross-checks them against the generated OpenAPI paths).
-ROUTERS = (health.router, auth.router, users.router, jobs.router)
+ROUTERS = (
+    health.router,
+    auth.router,
+    users.router,
+    jobs.router,
+    sources.router,
+    ingestion.router,
+    events.router,
+)
 
 api_router = APIRouter(prefix=API_PREFIX)
 for _router in ROUTERS:

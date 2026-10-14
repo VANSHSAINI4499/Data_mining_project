@@ -84,6 +84,84 @@ def cmd_diagnostic_job(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_seed_reference(args: argparse.Namespace) -> int:
+    from app.services.reference import seed_reference
+
+    with get_session_factory()() as session:
+        result = seed_reference(session, CLI_ACTOR)
+    print(
+        f"attack categories: {result.categories_created} created, "
+        f"{result.categories_updated} updated; sources: {result.sources_created} created, "
+        f"{result.sources_existing} already present"
+    )
+    return 0
+
+
+def cmd_ingest(args: argparse.Namespace) -> int:
+    from datetime import date
+
+    from app.services import data_quality
+    from app.services.ingestion import BatchOptions, create_cli_batch, process_batch
+
+    settings = get_settings()
+    options = BatchOptions(
+        variant=args.variant,
+        assume_event_date=date.fromisoformat(args.assume_event_date)
+        if args.assume_event_date
+        else None,
+        timezone=args.timezone,
+        date_order=args.date_order,
+        dataset_partition=args.dataset_partition,
+    )
+    factory = get_session_factory()
+    with factory() as session:
+        batch, duplicate = create_cli_batch(
+            session,
+            settings,
+            CLI_ACTOR,
+            source_key=args.source,
+            adapter_name=args.adapter,
+            path=Path(args.path),
+            options=options,
+        )
+    if duplicate:
+        print(
+            json.dumps(
+                {
+                    "batch_id": str(batch.batch_id),
+                    "status": "duplicate",
+                    "duplicate_of": str(batch.duplicate_of),
+                }
+            )
+        )
+        return 0
+    outcome = process_batch(factory, settings, batch.batch_id, on_complete=data_quality.run_checks)
+    print(
+        json.dumps(
+            {
+                "batch_id": str(outcome.batch_id),
+                "status": outcome.status,
+                "records_total": outcome.records_total,
+                "records_loaded": outcome.records_loaded,
+                "records_rejected": outcome.records_rejected,
+                "records_duplicate": outcome.records_duplicate,
+                "error": outcome.error,
+            }
+        )
+    )
+    return 1 if outcome.status == "failed" else 0
+
+
+def cmd_generate_synthetic(args: argparse.Namespace) -> int:
+    from app.devtools.synthetic import write
+
+    paths = write(
+        Path(args.out), seed=args.seed, days=args.days, flows_per_hour=args.flows_per_hour
+    )
+    print(json.dumps({k: str(v) for k, v in paths.items()}))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cti", description="CTI Warehouse operator commands")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -96,6 +174,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="read the password from the first line of stdin instead of prompting",
     )
     p.set_defaults(func=cmd_create_admin)
+
+    p = sub.add_parser("seed-reference", help="load attack categories and default sources")
+    p.set_defaults(func=cmd_seed_reference)
+
+    p = sub.add_parser("ingest", help="import a file under the import root (runs inline)")
+    p.add_argument("--source", required=True, help="source_key, e.g. synthetic")
+    p.add_argument("--adapter", help="adapter name (default: the source's default adapter)")
+    p.add_argument("--variant")
+    p.add_argument("--assume-event-date", help="YYYY-MM-DD for files without timestamps")
+    p.add_argument("--timezone", help="IANA timezone for naive timestamps (overrides source)")
+    p.add_argument("--date-order", choices=["dmy", "mdy"])
+    p.add_argument("--dataset-partition", choices=["training", "testing"])
+    p.add_argument("path")
+    p.set_defaults(func=cmd_ingest)
+
+    p = sub.add_parser("generate-synthetic", help="write deterministic synthetic scenario files")
+    p.add_argument("--scenario", choices=["full"], default="full")
+    p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--days", type=int, default=10)
+    p.add_argument("--flows-per-hour", type=int, default=8)
+    p.add_argument("--out", required=True)
+    p.set_defaults(func=cmd_generate_synthetic)
 
     p = sub.add_parser("worker", help="run the background job worker")
     p.add_argument("--heartbeat-file", help="file touched every poll interval (health checks)")

@@ -1,0 +1,34 @@
+# Default data sources created by `cti seed-reference` if they do not exist yet.
+# Existing sources are never modified by seeding (user edits win).
+#
+# default_timezone: IANA name used for timestamps that carry no timezone. Omit it (NULL) when
+# the correct value is unknown; adapters with naive local timestamps then refuse to run until
+# a user sets it (DATA_INGESTION.md §4.2, open decision OD-4).
+
+version = 1
+
+[[source]]
+source_key = "synthetic"
+name = "Synthetic scenarios"
+source_type = "dataset"
+default_adapter = "canonical_jsonl"
+default_timezone = "UTC"
+reliability = "F"
+description = "Deterministic synthetic data from `cti generate-synthetic` (development and tests)."
+
+[[source]]
+source_key = "cicids2017"
+name = "CIC-IDS2017"
+source_type = "dataset"
+default_adapter = "cicids2017"
+reliability = "F"
+description = "Canadian Institute for Cybersecurity IDS 2017 dataset (download manually). Set default_timezone before importing variants with naive timestamps."
+
+[[source]]
+source_key = "unsw-nb15"
+name = "UNSW-NB15"
+source_type = "dataset"
+default_adapter = "unsw_nb15"
+default_timezone = "UTC"
+reliability = "F"
+description = "UNSW Canberra UNSW-NB15 dataset (download manually). Raw-record timestamps are epoch seconds."

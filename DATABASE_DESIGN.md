@@ -66,6 +66,7 @@ Unique: `(source_id, file_sha256, adapter, adapter_version)` — re-uploading th
 | `raw_payload` | jsonb NULL | Parsed source record (CSV row as object, JSON object). |
 | `raw_text` | text NULL | Original line when it could not be parsed as structured data (truncated to 64 KiB, flag set). |
 | `raw_truncated` | boolean | |
+| `raw_nul_escaped` | boolean | NUL bytes / unpaired surrogates were escaped for storage. |
 | `record_sha256` | text | Hash of the original bytes. |
 | `received_at` | timestamptz | |
 
@@ -348,3 +349,10 @@ Long-running jobs must not hold one transaction for the whole run.
 6. Data migrations (seeds, backfills) are separate revisions from schema changes; large backfills run as CLI commands, not migrations.
 7. Adding a `NOT NULL` column to a populated table: add nullable → backfill → set `NOT NULL` in a later revision.
 8. Update [DATA_DICTIONARY.md](DATA_DICTIONARY.md) and this file in the same change.
+
+## 12. Implementation notes (Phase 2)
+
+- `fact_security_event.event_id` uses a plain sequence (`fact_security_event_event_id_seq`) rather than an identity column, so partitioning works on PostgreSQL versions before 17.
+- `ingestion_batch` also has `metadata jsonb` (options, variant, header map, encodings, per-field warning counts, unmapped labels) and the file-level uniqueness index excludes rows with `status = 'duplicate'`.
+- Autogenerate/drift checks ignore monthly partitions and PostgreSQL's internal per-partition foreign keys (`app/models/autogen.py`).
+- Database sessions are pinned to `timezone=UTC`.

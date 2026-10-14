@@ -1,0 +1,6 @@
+indicator_type,value,confidence,first_seen,last_seen,valid_until,description,tlp,technique_ids
+ipv4,203.0.113.99,80,2025-12-02T00:00:00Z,2026-01-11T00:00:00Z,2026-03-12T00:00:00Z,Synthetic C2 server,TLP:CLEAR,T1071
+domain,c2.example.test,70,2025-12-02T00:00:00Z,2026-01-11T00:00:00Z,2026-03-12T00:00:00Z,Synthetic C2 domain,TLP:CLEAR,T1071
+ipv4,203.0.113.66,60,2025-12-02T00:00:00Z,2026-01-11T00:00:00Z,2026-03-12T00:00:00Z,Synthetic brute-force source,TLP:CLEAR,T1110
+ipv4,203.0.113.200,90,2025-12-02T00:00:00Z,2025-12-31T00:00:00Z,2025-12-31T00:00:00Z,Synthetic expired indicator,TLP:CLEAR,
+url,hxxp://payload.example[.]test/a.bin,50,2025-12-02T00:00:00Z,2026-01-11T00:00:00Z,2026-03-12T00:00:00Z,Synthetic defanged URL,TLP:CLEAR,

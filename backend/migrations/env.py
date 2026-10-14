@@ -10,7 +10,9 @@ from alembic import context
 from sqlalchemy import Connection, create_engine, pool
 
 from app.core.config import get_settings
+from app.core.db import SESSION_OPTIONS
 from app.models import Base
+from app.models.autogen import include_name, include_object
 
 config = context.config
 if config.config_file_name is not None and config.attributes.get("configure_logger", True):
@@ -26,7 +28,13 @@ def _url() -> str:
 
 
 def _run(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+        include_name=include_name,
+        include_object=include_object,
+    )
     with context.begin_transaction():
         context.run_migrations()
 
@@ -42,7 +50,7 @@ def run_migrations_online() -> None:
     if connection is not None:
         _run(connection)
         return
-    engine = create_engine(_url(), poolclass=pool.NullPool)
+    engine = create_engine(_url(), poolclass=pool.NullPool, connect_args=SESSION_OPTIONS)
     with engine.connect() as conn:
         _run(conn)
 

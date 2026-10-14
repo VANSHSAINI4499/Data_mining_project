@@ -1,0 +1,137 @@
+# Canonical attack taxonomy (DATA_DICTIONARY.md §11.2). Loaded by `cti seed-reference`.
+#
+# `id` values are permanent: they are foreign keys in ground truth and (later) predictions.
+# Never renumber or reuse an id; add new categories with new ids.
+#
+# `severity_weight` (0-1) feeds the Phase 5 risk score (ATTACK_CORRELATION.md §6). These are
+# initial, judgement-based values to be reviewed in Phase 5; they are not measured quantities.
+
+version = 1
+
+[[category]]
+id = 1
+code = "BENIGN"
+name = "Benign"
+description = "Normal/background traffic as labelled by the dataset."
+is_benign = true
+severity_weight = 0.00
+
+[[category]]
+id = 2
+code = "DOS"
+name = "Denial of service"
+description = "Denial of service from a single or limited set of sources."
+is_benign = false
+severity_weight = 0.60
+
+[[category]]
+id = 3
+code = "DDOS"
+name = "Distributed denial of service"
+description = "Distributed denial of service."
+is_benign = false
+severity_weight = 0.70
+
+[[category]]
+id = 4
+code = "RECONNAISSANCE"
+name = "Reconnaissance"
+description = "Scanning, probing, enumeration."
+is_benign = false
+severity_weight = 0.40
+
+[[category]]
+id = 5
+code = "BRUTE_FORCE"
+name = "Brute force"
+description = "Credential guessing (e.g., SSH/FTP brute force)."
+is_benign = false
+severity_weight = 0.60
+
+[[category]]
+id = 6
+code = "WEB_ATTACK"
+name = "Web attack"
+description = "Web application attacks (injection, XSS, web brute force)."
+is_benign = false
+severity_weight = 0.70
+
+[[category]]
+id = 7
+code = "BOTNET"
+name = "Botnet"
+description = "Bot command-and-control / bot traffic."
+is_benign = false
+severity_weight = 0.80
+
+[[category]]
+id = 8
+code = "INFILTRATION"
+name = "Infiltration"
+description = "Post-compromise internal activity as labelled by the dataset."
+is_benign = false
+severity_weight = 0.90
+
+[[category]]
+id = 9
+code = "EXPLOIT"
+name = "Exploit"
+description = "Exploitation of a vulnerability."
+is_benign = false
+severity_weight = 0.80
+
+[[category]]
+id = 10
+code = "BACKDOOR"
+name = "Backdoor"
+description = "Backdoor access traffic."
+is_benign = false
+severity_weight = 0.90
+
+[[category]]
+id = 11
+code = "SHELLCODE"
+name = "Shellcode"
+description = "Shellcode delivery."
+is_benign = false
+severity_weight = 0.80
+
+[[category]]
+id = 12
+code = "WORM"
+name = "Worm"
+description = "Self-propagating malware traffic."
+is_benign = false
+severity_weight = 0.80
+
+[[category]]
+id = 13
+code = "FUZZING"
+name = "Fuzzing"
+description = "Fuzzing traffic."
+is_benign = false
+severity_weight = 0.30
+
+[[category]]
+id = 14
+code = "ANALYSIS"
+name = "Analysis"
+description = "UNSW-NB15 'Analysis' category (port scans, spam, HTML penetration as described by the dataset)."
+is_benign = false
+severity_weight = 0.30
+
+[[category]]
+id = 15
+code = "GENERIC"
+name = "Generic"
+description = "UNSW-NB15 'Generic' category (dataset-defined)."
+is_benign = false
+severity_weight = 0.50
+
+[[category]]
+id = 16
+code = "OTHER_MALICIOUS"
+name = "Other malicious"
+description = "Malicious labels merged due to low support or no closer category."
+is_benign = false
+severity_weight = 0.50

@@ -1,0 +1,24 @@
+# CIC-IDS2017 label -> canonical category (ML_CLASSIFICATION.md §3). Keys are matched after
+# normalisation (case-insensitive; punctuation, dashes, and mis-decoded characters collapse to
+# single spaces). Labels not listed here are stored as `unmapped` and reported, never guessed.
+# These entries come from the dataset's published label set and must be confirmed against the
+# actual files on first import (unexpected labels will surface in data quality as unmapped).
+
+version = 1
+
+[map]
+"BENIGN" = "BENIGN"
+"DoS Hulk" = "DOS"
+"DoS GoldenEye" = "DOS"
+"DoS slowloris" = "DOS"
+"DoS Slowhttptest" = "DOS"
+"DDoS" = "DDOS"
+"PortScan" = "RECONNAISSANCE"
+"FTP-Patator" = "BRUTE_FORCE"
+"SSH-Patator" = "BRUTE_FORCE"
+"Web Attack - Brute Force" = "WEB_ATTACK"
+"Web Attack - XSS" = "WEB_ATTACK"
+"Web Attack - Sql Injection" = "WEB_ATTACK"
+"Bot" = "BOTNET"
+"Infiltration" = "INFILTRATION"
+"Heartbleed" = "EXPLOIT"

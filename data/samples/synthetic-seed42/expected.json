@@ -1,0 +1,93 @@
+{
+  "days": 10,
+  "event_count": 1582,
+  "events_by_label": {
+    "BENIGN": 1270,
+    "BOTNET": 8,
+    "BRUTE_FORCE": 26,
+    "EXPLOIT": 30,
+    "OTHER_MALICIOUS": 40,
+    "RECONNAISSANCE": 208
+  },
+  "events_by_type": {
+    "auth": 136,
+    "dns": 3,
+    "ids_alert": 8,
+    "network_flow": 1435
+  },
+  "flows_per_hour": 8,
+  "generator": "cti generate-synthetic",
+  "note": "Synthetic data only: RFC 5737 addresses, .test domains, fictional accounts.",
+  "planted": [
+    {
+      "entity": "svc-backup",
+      "entity_type": "account",
+      "expected_rule": "bruteforce_then_success",
+      "failures": 25,
+      "pattern": "bruteforce_then_success",
+      "src_ip": "203.0.113.66",
+      "successes": 1,
+      "window_end": "2026-01-09T02:08:50Z",
+      "window_start": "2026-01-09T02:00:00Z"
+    },
+    {
+      "entity": "203.0.113.77",
+      "entity_type": "src_ip",
+      "expected_rule": "recon_then_attack",
+      "exploit_flows": 30,
+      "pattern": "recon_then_attack",
+      "scan_flows": 200,
+      "target": "198.51.100.20",
+      "window_end": "2026-01-09T14:34:50Z",
+      "window_start": "2026-01-09T14:00:00Z"
+    },
+    {
+      "baseline": "two daytime logins per day from 192.0.2.50",
+      "distinct_src_ips": 10,
+      "entity": "mallory",
+      "entity_type": "account",
+      "expected_window_size": "1h",
+      "logins": 40,
+      "pattern": "anomalous_account",
+      "window_end": "2026-01-10T04:00:00Z",
+      "window_start": "2026-01-10T03:00:00Z"
+    },
+    {
+      "entity": "192.0.2.20",
+      "entity_type": "host",
+      "expected_rule": "ti_match_active",
+      "indicators": [
+        {
+          "expected_matches": 5,
+          "matched_field": "dst_ip",
+          "type": "ipv4",
+          "value": "203.0.113.99"
+        },
+        {
+          "expected_matches": 3,
+          "matched_field": "dns_query",
+          "type": "domain",
+          "value": "c2.example.test"
+        }
+      ],
+      "pattern": "indicator_matches",
+      "window_end": "2026-01-08T10:48:00Z",
+      "window_start": "2026-01-08T09:59:59Z"
+    },
+    {
+      "alerts": 8,
+      "entity": "203.0.113.88",
+      "entity_type": "src_ip",
+      "expected_rule": "repeated_ids_signature",
+      "pattern": "repeated_ids_signature",
+      "signature_id": 2001219,
+      "window_end": "2026-01-09T20:21:00Z",
+      "window_start": "2026-01-09T20:00:00Z"
+    }
+  ],
+  "seed": 42,
+  "time_range": {
+    "from": "2026-01-01T00:00:00Z",
+    "to": "2026-01-11T00:00:00Z"
+  }
+}

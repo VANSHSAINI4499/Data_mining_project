@@ -22,6 +22,7 @@ _HTTP_SLUGS = {
     404: ("not-found", "Resource not found"),
     405: ("method-not-allowed", "Method not allowed"),
     409: ("conflict", "Conflict"),
+    411: ("length-required", "Content-Length required"),
     413: ("payload-too-large", "Payload too large"),
     415: ("unsupported-media-type", "Unsupported media type"),
     422: ("validation-error", "Request validation failed"),

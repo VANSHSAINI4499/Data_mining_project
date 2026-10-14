@@ -67,3 +67,8 @@ def test_not_ready_when_upload_dir_unwritable(
     resp = client.get("/api/v1/health/ready")
     assert resp.status_code == 503
     assert resp.json()["checks"]["upload_dir"]["status"] == "fail"
+
+
+def test_database_sessions_use_utc(db: Session) -> None:
+    with db.begin():
+        assert db.execute(text("SHOW timezone")).scalar_one() == "UTC"

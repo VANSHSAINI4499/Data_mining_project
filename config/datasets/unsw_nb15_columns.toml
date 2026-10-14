@@ -1,0 +1,18 @@
+# Column names for the header-less UNSW-NB15 raw record files (UNSW-NB15_1.csv .. _4.csv).
+#
+# Transcribed from the dataset's feature description file (NUSW-NB15_features.csv). This list
+# was written without access to the files in this repository: VERIFY it against your copy before
+# importing. The adapter rejects any row whose field count differs from this list
+# (WRONG_FIELD_COUNT), so a mismatch shows up as rejections rather than silently shifted columns.
+
+version = 1
+
+columns = [
+  "srcip", "sport", "dstip", "dsport", "proto", "state", "dur", "sbytes", "dbytes", "sttl",
+  "dttl", "sloss", "dloss", "service", "sload", "dload", "spkts", "dpkts", "swin", "dwin",
+  "stcpb", "dtcpb", "smeansz", "dmeansz", "trans_depth", "res_bdy_len", "sjit", "djit", "stime",
+  "ltime", "sintpkt", "dintpkt", "tcprtt", "synack", "ackdat", "is_sm_ips_ports",
+  "ct_state_ttl", "ct_flw_http_mthd", "is_ftp_login", "ct_ftp_cmd", "ct_srv_src", "ct_srv_dst",
+  "ct_dst_ltm", "ct_src_ltm", "ct_src_dport_ltm", "ct_dst_sport_ltm", "ct_dst_src_ltm",
+  "attack_cat", "label",
+]

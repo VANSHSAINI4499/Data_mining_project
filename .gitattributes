@@ -1,4 +1,6 @@
-* text=auto
+* text=auto eol=lf
 *.sh text eol=lf
 *.py text eol=lf
 Dockerfile text eol=lf
+# Data samples must stay byte-identical to the generator output.
+data/samples/** text eol=lf

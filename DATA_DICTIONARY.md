@@ -41,7 +41,7 @@ Authoritative definitions of canonical fields. Table layout: [DATABASE_DESIGN.md
 
 | Field | Type | Req | Cat | Meaning | Validation | Source | Example |
 |---|---|---|---|---|---|---|---|
-| `event_time` | timestamptz | Y | N | When the event started/occurred, UTC. | 1990-01-01 ≤ t ≤ now + 24 h. Naive input interpreted in the source's `default_timezone`. | adapter | `2017-07-05T13:42:10Z` |
+| `event_time` | timestamptz | Y | N | When the event started/occurred, UTC. | 2000-01-01 ≤ t ≤ now + 24 h (the `dim_date` range starts 2000-01-01). Naive input interpreted in the source's `default_timezone`. | adapter | `2017-07-05T13:42:10Z` |
 | `event_end_time` | timestamptz | N | N | Flow end time when provided. | ≥ `event_time`. | adapter | `2017-07-05T13:42:12Z` |
 | `time_quality` | text | Y | D | Precision/trust of `event_time`. | `exact` (sub-second), `second`, `assumed` (from `--assume-event-date`). | system | `second` |
 | `date_key` | int | Y | D | `dim_date` key (UTC date). | YYYYMMDD. | system | `20170705` |
@@ -56,7 +56,7 @@ Authoritative definitions of canonical fields. Table layout: [DATABASE_DESIGN.md
 | `src_ip` | inet | C | N | Source / originator IP. | Valid IPv4/IPv6. Required for `network_flow` unless `time_quality = 'assumed'` variant without IPs. | adapter | `192.0.2.10` |
 | `src_port` | integer | N | N | Source port. | 0–65535. | adapter | `51544` |
 | `dst_ip` | inet | C | N | Destination / responder IP. | As `src_ip`. | adapter | `198.51.100.7` |
-| `dst_port` | integer | C | N | Destination port. | 0–65535; required for `network_flow` with tcp/udp. | adapter | `22` |
+| `dst_port` | integer | N | N | Destination port. | 0–65535 (`0x…` hex accepted); invalid → NULL with a warning. Null rate is checked by data quality. | adapter | `22` |
 | `protocol` | text | C | N | Transport protocol name. | Lowercase; `tcp`, `udp`, `icmp`, `icmpv6`, other IANA keyword, or `unknown`. | adapter | `tcp` |
 | `ip_proto` | smallint | N | N | IANA protocol number. | 0–255. | adapter | `6` |
 | `app_protocol` | text | N | N | Application protocol detected by the sensor. | Lowercase, ≤ 32 chars. | adapter | `ssh` |

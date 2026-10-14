@@ -59,3 +59,15 @@ class CsrfError(DomainError):
 
 class NotReadyError(DomainError):
     status, slug, title = 503, "not-ready", "Service not ready"
+
+
+class PayloadTooLargeError(DomainError):
+    status, slug, title = 413, "payload-too-large", "Payload too large"
+
+
+class UnsupportedMediaTypeError(DomainError):
+    status, slug, title = 415, "unsupported-media-type", "Unsupported media type"
+
+
+class LengthRequiredError(DomainError):
+    status, slug, title = 411, "length-required", "Content-Length required"

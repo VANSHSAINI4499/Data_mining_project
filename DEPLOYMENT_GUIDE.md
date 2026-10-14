@@ -45,6 +45,11 @@ Implemented now (every one is listed in `.env.example`; a unit test enforces thi
 | `CTI_SESSION_TTL_MINUTES` / `CTI_SESSION_IDLE_MINUTES` | `480` / `60` | Session lifetimes. |
 | `CTI_CORS_ORIGINS` | `http://localhost:5173` | Comma-separated allowed origins. |
 | `CTI_UPLOAD_DIR` / `CTI_ARTIFACT_DIR` | `.local/uploads` / `.local/artifacts` | Writable directories; relative paths resolve against the repository root. |
+| `CTI_MAX_UPLOAD_MB` | `50` | API upload limit (enforced before parsing). |
+| `CTI_IMPORT_ROOT` | `data` | CLI imports must resolve inside this directory (relative to the repo root). |
+| `CTI_MAX_REJECT_RATIO` | `0.2` | After 10,000 records, a higher rejected fraction fails the batch. |
+| `CTI_INGEST_CHUNK_SIZE` | `5000` | Records per transaction while loading. |
+| `CTI_MAX_QUERY_DAYS` / `CTI_MAX_AGG_DAYS` | `400` / `400` | Maximum time span for event queries / aggregations. |
 | `CTI_MAX_CONCURRENT_JOBS` | `2` | Job slots per worker process. |
 | `CTI_JOB_HEARTBEAT_SECONDS` | `15` | How often a running job refreshes its heartbeat (and notices cancellation). |
 | `CTI_JOB_TIMEOUT_SECONDS` | `600` | A running job without a heartbeat for this long is failed with `worker_timeout`. |
@@ -57,8 +62,6 @@ Planned (added to `.env.example` when their phase is implemented):
 
 | Variable | Default | Phase |
 |---|---|---|
-| `CTI_MAX_UPLOAD_MB`, `CTI_IMPORT_ROOT` (`./data`), `CTI_MAX_REJECT_RATIO` (`0.2`) | `50`, `./data`, `0.2` | 2 |
-| `CTI_MAX_QUERY_DAYS` / `CTI_MAX_AGG_DAYS` | `400` / `400` | 2 |
 | `CTI_SITE_TIMEZONE` | `UTC` | 4 |
 | `CTI_ALERT_MAX_EVIDENCE`, `CTI_TI_*` ([THREAT_INTELLIGENCE.md §11](THREAT_INTELLIGENCE.md#11-configuration)) | — | 5 |
 | `CTI_RETENTION_*` ([DATABASE_DESIGN.md §9](DATABASE_DESIGN.md#9-retention)) | — | 7 |
@@ -159,9 +162,9 @@ docker compose down                 # keep volumes; `down -v` DELETES the databa
 
 Compose builds its own database URLs from `POSTGRES_*` (host `postgres`), so the native `CTI_DATABASE_URL` in `.env` is not used inside containers. Stop a native PostgreSQL on port 5432 first, or change the published port.
 
-## 12. Data import, ML, and threat intelligence (Phases 2–5, not yet implemented)
+## 12. Data import (Phase 2, implemented), ML and threat intelligence (Phases 3–5)
 
-Target commands, run from the repository root:
+Run from the repository root. The Phase 2 commands (`seed-reference`, `generate-synthetic`, `ingest`) work today; the others are added by later phases:
 
 ```bash
 uv run --project backend cti seed-reference
@@ -194,10 +197,10 @@ Public datasets are downloaded manually (UNSW-NB15: <https://research.unsw.edu.a
 | `cti worker [--heartbeat-file F] [--once]` | Run the job worker (`--once`: run at most one job, then exit). | 1 |
 | `cti worker-healthcheck --heartbeat-file F [--max-age-seconds N]` | Exit 0 if the worker heartbeat is fresh. | 1 |
 | `cti diagnostic-job [--steps N] [--sleep-seconds S] [--fail] [--transient-failures N]` | Enqueue a `diagnostic` job that exercises the queue (success, failure, retry, progress). | 1 |
-| `cti seed-reference` | Seed attack categories, default sources (`synthetic`, `cicids2017`, `unsw-nb15`), a local file feed (`local-csv`), default correlation rules, mappings (idempotent). | 2 |
-| `cti ingest --source S --adapter A [--variant V] [--assume-event-date D] [--timezone TZ] PATH` | Import a file. | 2 |
-| `cti assets-import PATH` | Import asset inventory. | 2 |
-| `cti generate-synthetic --scenario N --seed S --out DIR` | Generate synthetic data + expected outcomes. | 2 |
+| `cti seed-reference` | Seed attack categories and default sources (`synthetic`, `cicids2017`, `unsw-nb15`) from `config/reference/` (idempotent; never overwrites user edits). Phase 5 adds feeds and rules. | 2 |
+| `cti ingest --source S [--adapter A] [--variant V] [--assume-event-date D] [--timezone TZ] [--date-order dmy\|mdy] [--dataset-partition training\|testing] PATH` | Import a file under `CTI_IMPORT_ROOT` (inline, no worker needed). Exit code 1 if the batch failed. | 2 |
+| *(not provided)* | Asset inventory import is API-only: `POST /api/v1/assets/import`. | 2 |
+| `cti generate-synthetic [--seed S] [--days D] [--flows-per-hour N] --out DIR` | Deterministic synthetic scenario: `events.jsonl`, `synthetic_indicators.csv`, `expected.json`. The committed sample is `data/samples/synthetic-seed42/`. | 2 |
 | `cti train classifier\|anomaly --config FILE [...]` | Train models. | 3/4 |
 | `cti score classifier\|anomaly [scope]` | Score events/windows. | 3/4 |
 | `cti models list\|promote\|archive\|reject` | Registry operations. | 3 |

@@ -1,0 +1,19 @@
+# UNSW-NB15 attack_cat -> canonical category (ML_CLASSIFICATION.md §3). The binary `label`
+# column is stored as is_attack; a category that contradicts it becomes `ambiguous`. An empty
+# attack_cat is BENIGN only when label = 0 (otherwise ambiguous).
+
+version = 1
+
+[map]
+"" = "BENIGN"
+"Normal" = "BENIGN"
+"Fuzzers" = "FUZZING"
+"Analysis" = "ANALYSIS"
+"Backdoor" = "BACKDOOR"
+"Backdoors" = "BACKDOOR"
+"DoS" = "DOS"
+"Exploits" = "EXPLOIT"
+"Generic" = "GENERIC"
+"Reconnaissance" = "RECONNAISSANCE"
+"Shellcode" = "SHELLCODE"
+"Worms" = "WORM"

@@ -31,6 +31,112 @@ def client_ip(scope: Scope) -> str | None:
         return None
 
 
+UPLOAD_PATH_SUFFIXES = ("/ingestion/uploads", "/assets/import")
+MULTIPART_OVERHEAD = 1024 * 1024  # form fields and boundaries around the file part
+
+
+class _BodyTooLargeError(Exception):
+    pass
+
+
+class UploadLimitMiddleware:
+    """Enforce the upload limit *before* the multipart body is parsed (SECURITY §4).
+
+    Requires a Content-Length on upload endpoints and stops reading if the body exceeds it.
+    """
+
+    def __init__(self, app: ASGIApp, max_bytes: int) -> None:
+        self.app = app
+        self.max_bytes = max_bytes + MULTIPART_OVERHEAD
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if (
+            scope["type"] != "http"
+            or scope.get("method") != "POST"
+            or not str(scope.get("path", "")).endswith(UPLOAD_PATH_SUFFIXES)
+        ):
+            await self.app(scope, receive, send)
+            return
+        path = str(scope.get("path", ""))
+        length = Headers(scope=scope).get("content-length")
+        if length is None or not length.isdigit():
+            await _problem(
+                scope,
+                receive,
+                send,
+                411,
+                "length-required",
+                "Content-Length required",
+                "uploads must declare Content-Length",
+            )
+            return
+        if int(length) > self.max_bytes:
+            await _problem(
+                scope,
+                receive,
+                send,
+                413,
+                "payload-too-large",
+                "Payload too large",
+                f"upload body exceeds the limit of {self.max_bytes} bytes",
+            )
+            return
+        received = 0
+        started = False
+
+        async def counting_receive() -> Message:
+            nonlocal received
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > self.max_bytes:
+                    raise _BodyTooLargeError
+            return message
+
+        async def tracking_send(message: Message) -> None:
+            nonlocal started
+            if message["type"] == "http.response.start":
+                started = True
+            await send(message)
+
+        try:
+            await self.app(scope, counting_receive, tracking_send)
+        except _BodyTooLargeError:
+            if not started:
+                await _problem(
+                    scope,
+                    receive,
+                    send,
+                    413,
+                    "payload-too-large",
+                    "Payload too large",
+                    f"body exceeded {self.max_bytes} bytes",
+                    path,
+                )
+
+
+async def _problem(
+    scope: Scope,
+    receive: Receive,
+    send: Send,
+    status: int,
+    slug: str,
+    title: str,
+    detail: str,
+    instance: str | None = None,
+) -> None:
+    from app.api.problems import problem_response
+
+    response = problem_response(
+        status=status,
+        slug=slug,
+        title=title,
+        detail=detail,
+        instance=instance or str(scope.get("path", "")),
+    )
+    await response(scope, receive, send)
+
+
 class RequestContextMiddleware:
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
