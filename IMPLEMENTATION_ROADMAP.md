@@ -21,7 +21,7 @@ flowchart LR
 | 1 | Complete (Docker verification AC-1.2D not run) | `57d353c` | Native setup verified. |
 | 2 | Complete except AC-2.8 (no public dataset present) | see `git log` | 9 adapters, DQ, events/analytics API, synthetic generator. |
 | 3 | Complete except AC-3.9 (no public dataset present) | see `git log` | RF + baselines, leakage checks, registry, scoring. |
-| 4 | Not started | | |
+| 4 | Complete; AC-4.4 only partly met (robust z flags the planted anomaly, Isolation Forest does not on the small synthetic sample - documented limitation) | see `git log` | Window features, robust z, Isolation Forest, explanations. |
 | 5 | Not started | | |
 | 6 | Not started | | |
 | 7 | Not started | | |

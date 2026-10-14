@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.jobs.anomaly import run_score_anomaly, run_train_anomaly
 from app.jobs.diagnostic import run_diagnostic
 from app.jobs.ingestion import run_ingestion
 from app.jobs.ml import run_score_classifier, run_train_classifier
@@ -12,4 +13,6 @@ HANDLERS: dict[str, JobHandler] = {
     "ingestion.process_batch": run_ingestion,
     "ml.train_classifier": run_train_classifier,
     "ml.score_classifier": run_score_classifier,
+    "ml.train_anomaly": run_train_anomaly,
+    "ml.score_anomaly": run_score_anomaly,
 }

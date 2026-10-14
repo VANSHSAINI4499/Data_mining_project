@@ -166,9 +166,8 @@ def cmd_train(args: argparse.Namespace) -> int:
     from app.ml.classification.training import TrainingError
     from app.services import classification
 
-    if args.task != "classifier":
-        print("error: anomaly training is added in Phase 4", file=sys.stderr)
-        return 2
+    if args.task == "anomaly":
+        return _train_anomaly(args)
     config = classification.load_config_file(Path(args.config), args.batch_id or [])
     factory = get_session_factory()
     with factory() as session:
@@ -198,9 +197,8 @@ def cmd_train(args: argparse.Namespace) -> int:
 def cmd_score(args: argparse.Namespace) -> int:
     from app.services import classification
 
-    if args.task != "classifier":
-        print("error: anomaly scoring is added in Phase 4", file=sys.stderr)
-        return 2
+    if args.task == "anomaly":
+        return _score_anomaly(args)
     scope: dict[str, object] = {}
     if args.batch_id:
         scope["batch_ids"] = args.batch_id
@@ -212,6 +210,70 @@ def cmd_score(args: argparse.Namespace) -> int:
     with factory() as session:
         run = classification.start_scoring(session, CLI_ACTOR, scope, None, enqueue=False)
     done = classification.run_scoring(factory, get_settings(), run.scoring_run_id)
+    print(
+        json.dumps(
+            {
+                "scoring_run_id": str(done.scoring_run_id),
+                "rows_scored": done.rows_scored,
+                "rows_skipped": done.rows_skipped,
+            }
+        )
+    )
+    return 0
+
+
+def _train_anomaly(args: argparse.Namespace) -> int:
+    from app.ml.classification.training import TrainingError
+    from app.services import anomaly
+
+    config_path = args.config
+    if config_path.endswith("classifier_default.toml"):
+        config_path = "config/ml/anomaly_account_1h.toml"
+    config = anomaly.load_config_file(Path(config_path))
+    factory = get_session_factory()
+    with factory() as session:
+        run = anomaly.start_training(session, CLI_ACTOR, config, enqueue=False)
+    try:
+        done = anomaly.run_training(factory, get_settings(), run.run_id)
+    except TrainingError as exc:
+        print(json.dumps({"run_id": str(run.run_id), "status": "failed", "error": str(exc)}))
+        return 1
+    metrics = done.metrics or {}
+    print(
+        json.dumps(
+            {
+                "run_id": str(done.run_id),
+                "status": done.status,
+                "threshold": metrics.get("threshold"),
+                "reference": metrics.get("reference"),
+            },
+            default=str,
+        )
+    )
+    return 0
+
+
+def _score_anomaly(args: argparse.Namespace) -> int:
+    import uuid as _uuid
+    from datetime import datetime as _dt
+
+    from app.services import anomaly
+
+    if not (args.from_ and args.to):
+        print("error: anomaly scoring needs --from and --to", file=sys.stderr)
+        return 2
+    factory = get_session_factory()
+    with factory() as session:
+        run = anomaly.start_scoring(
+            session,
+            CLI_ACTOR,
+            start=_dt.fromisoformat(args.from_),
+            end=_dt.fromisoformat(args.to),
+            model_id=_uuid.UUID(args.model_id) if args.model_id else None,
+            name=args.name or "account_window_1h_iforest",
+            enqueue=False,
+        )
+    done = anomaly.run_scoring(factory, get_settings(), run.scoring_run_id)
     print(
         json.dumps(
             {
@@ -312,6 +374,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--batch-id", action="append")
     p.add_argument("--from", dest="from_")
     p.add_argument("--to")
+    p.add_argument("--model-id", help="anomaly: score with this model (default: active --name)")
+    p.add_argument("--name", help="anomaly: registry name of the active model to use")
     p.set_defaults(func=cmd_score)
 
     p = sub.add_parser("models", help="model registry operations")

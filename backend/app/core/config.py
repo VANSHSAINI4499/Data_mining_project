@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     ingest_chunk_size: int = Field(default=5000, ge=1, le=100_000)
     max_query_days: int = Field(default=400, ge=1)
     max_agg_days: int = Field(default=400, ge=1)
+    site_timezone: str = "UTC"
     max_concurrent_jobs: int = Field(default=2, ge=1, le=16)
     job_heartbeat_seconds: int = Field(default=15, ge=1)
     job_timeout_seconds: int = Field(default=600, ge=10)
@@ -66,6 +67,17 @@ class Settings(BaseSettings):
         # Relative paths are resolved against the repository root so that the API, worker,
         # CLI, and tests agree regardless of the current working directory.
         return value if value.is_absolute() else (REPO_ROOT / value).resolve()
+
+    @field_validator("site_timezone")
+    @classmethod
+    def _valid_timezone(cls, value: str) -> str:
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError(f"unknown IANA timezone {value!r}") from exc
+        return value
 
     @field_validator("log_level")
     @classmethod

@@ -50,6 +50,7 @@ Implemented now (every one is listed in `.env.example`; a unit test enforces thi
 | `CTI_MAX_REJECT_RATIO` | `0.2` | After 10,000 records, a higher rejected fraction fails the batch. |
 | `CTI_INGEST_CHUNK_SIZE` | `5000` | Records per transaction while loading. |
 | `CTI_MAX_QUERY_DAYS` / `CTI_MAX_AGG_DAYS` | `400` / `400` | Maximum time span for event queries / aggregations. |
+| `CTI_SITE_TIMEZONE` | `UTC` | Timezone for the anomaly "off hours" feature (07:00-19:00 local is business time). |
 | `CTI_MAX_CONCURRENT_JOBS` | `2` | Job slots per worker process. |
 | `CTI_JOB_HEARTBEAT_SECONDS` | `15` | How often a running job refreshes its heartbeat (and notices cancellation). |
 | `CTI_JOB_TIMEOUT_SECONDS` | `600` | A running job without a heartbeat for this long is failed with `worker_timeout`. |
@@ -62,7 +63,6 @@ Planned (added to `.env.example` when their phase is implemented):
 
 | Variable | Default | Phase |
 |---|---|---|
-| `CTI_SITE_TIMEZONE` | `UTC` | 4 |
 | `CTI_ALERT_MAX_EVIDENCE`, `CTI_TI_*` ([THREAT_INTELLIGENCE.md §11](THREAT_INTELLIGENCE.md#11-configuration)) | — | 5 |
 | `CTI_RETENTION_*` ([DATABASE_DESIGN.md §9](DATABASE_DESIGN.md#9-retention)) | — | 7 |
 | `CTI_DATASET_DIR` | unset | enables `dataset`-marked tests |
@@ -201,8 +201,10 @@ Public datasets are downloaded manually (UNSW-NB15: <https://research.unsw.edu.a
 | `cti ingest --source S [--adapter A] [--variant V] [--assume-event-date D] [--timezone TZ] [--date-order dmy\|mdy] [--dataset-partition training\|testing] PATH` | Import a file under `CTI_IMPORT_ROOT` (inline, no worker needed). Exit code 1 if the batch failed. | 2 |
 | *(not provided)* | Asset inventory import is API-only: `POST /api/v1/assets/import`. | 2 |
 | `cti generate-synthetic [--seed S] [--days D] [--flows-per-hour N] --out DIR` | Deterministic synthetic scenario: `events.jsonl`, `synthetic_indicators.csv`, `expected.json`. The committed sample is `data/samples/synthetic-seed42/`. | 2 |
-| `cti train classifier [--config FILE] --batch-id ID [--batch-id ID ...]` | Train inline; prints run id and test macro/weighted F1 and leakage warnings. Anomaly training: Phase 4. | 3 |
-| `cti score classifier (--batch-id ID ... \| --from T --to T)` | Score with the active model inline. Anomaly scoring: Phase 4. | 3 |
+| `cti train classifier [--config FILE] --batch-id ID [--batch-id ID ...]` | Train inline; prints run id and test macro/weighted F1 and leakage warnings. | 3 |
+| `cti train anomaly [--config FILE]` | Train an anomaly model inline (default `config/ml/anomaly_account_1h.toml`). | 4 |
+| `cti score classifier (--batch-id ID ... \| --from T --to T)` | Score with the active classifier inline. | 3 |
+| `cti score anomaly --from T --to T [--name NAME \| --model-id ID]` | Score entity windows with an anomaly model inline. | 4 |
 | `cti models list\|promote\|archive\|reject [MODEL_ID] [--reason R]` | Registry operations (promotion applies the gate). | 3 |
 | `cti artifacts gc [--dry-run]` | Remove orphan artifact files. | 3 |
 | `cti attack-import PATH` | Load ATT&CK STIX bundle. | 5 |

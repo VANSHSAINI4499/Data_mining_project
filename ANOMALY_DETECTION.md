@@ -135,3 +135,15 @@ min_baseline_windows = 24
 [iforest]
 n_estimators = 200
 ```
+
+## 13. Implementation notes (Phase 4)
+
+- Code: `app/ml/anomaly/windows.py` (window_v1 features, robust statistics), `app/ml/anomaly/methods.py` (scoring, thresholds, explanations, proxy evaluation), `app/services/anomaly.py`. Results are stored in `anomaly_result` (created by the Phase 3 migration).
+- **`host` entities** use `host_name` (lowercased) and fall back to `src_ip` for network-only events.
+- **Zero-MAD baselines:** when an entity's baseline has no spread, deviations are measured in units of max(mean absolute deviation, 10 % of |median|, 1) so scores stay finite and readable (a constant baseline of 1 login and a window with 40 gives z = 39).
+- **Robust-z threshold floor:** the reference-percentile threshold is never below 3.0 for `robust_zscore`; otherwise a reference period without variation produces a threshold of 0 and flags everything.
+- **Isolation Forest limitation (observed):** values far outside the reference range are isolated like the range boundary, and with few, mostly identical reference windows the scores carry little information. On the synthetic sample (55 account windows) Isolation Forest did **not** flag the planted 40-login window, while `robust_zscore` flagged it and nothing else. Training reports a warning when there are fewer than 256 reference windows or the reference scores are nearly constant. Prefer `robust_zscore` for low-volume entities.
+- **Explanations:** robust-z deviations against the entity's own history; when the entity lacks history, against the reference population (labelled `"against": "population (reference)"`).
+- **Seasonal comparison:** returned only when at least 4 earlier windows at the same hour-of-week exist in the last 28 days; otherwise `insufficient_history_for_seasonal_comparison`.
+- **Proxy evaluation** is computed in-sample on the reference period when labelled-malicious events exist, and is labelled as such.
+- Concept-drift monitoring (§11) is Phase 8.

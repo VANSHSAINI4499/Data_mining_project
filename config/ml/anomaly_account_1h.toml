@@ -1,0 +1,18 @@
+# Example anomaly model (ANOMALY_DETECTION.md §12). Adjust the reference period to your data:
+# it should be long enough (min_reference_days) and ideally free of known attacks, because
+# anything inside it is treated as normal. These dates match the synthetic sample (seed 42).
+
+name = "account_window_1h_iforest"
+method = "isolation_forest"           # or "robust_zscore"
+entity_type = "account"               # host | account | src_ip
+window_size = "1h"                    # 15m | 1h | 1d
+random_seed = 42
+reference_start = "2026-01-01T00:00:00Z"
+reference_end = "2026-01-09T00:00:00Z"
+threshold_percentile = 99.0
+baseline_days = 14
+min_baseline_windows = 24
+min_reference_days = 7
+
+[iforest]
+n_estimators = 200
