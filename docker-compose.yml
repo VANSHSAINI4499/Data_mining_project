@@ -1,0 +1,106 @@
+# CTI Warehouse — local development stack (DEPLOYMENT_GUIDE.md §4).
+# Values come from the repository .env (copy .env.example and replace every change-me value).
+# Ports are bound to 127.0.0.1 only: this stack is for localhost / trusted networks.
+
+name: cti-warehouse
+
+x-backend-env: &backend-env
+  CTI_ENV: ${CTI_ENV:-development}
+  CTI_LOG_LEVEL: ${CTI_LOG_LEVEL:-INFO}
+  CTI_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-cti}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-cti}
+  CTI_TEST_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-cti}:${POSTGRES_PASSWORD}@postgres:5432/cti_test
+  CTI_SECRET_KEY: ${CTI_SECRET_KEY:?set CTI_SECRET_KEY in .env}
+  CTI_SESSION_TTL_MINUTES: ${CTI_SESSION_TTL_MINUTES:-480}
+  CTI_SESSION_IDLE_MINUTES: ${CTI_SESSION_IDLE_MINUTES:-60}
+  CTI_CORS_ORIGINS: ${CTI_CORS_ORIGINS:-http://localhost:5173}
+  CTI_UPLOAD_DIR: /var/lib/cti/uploads
+  CTI_ARTIFACT_DIR: /var/lib/cti/artifacts
+  CTI_MAX_CONCURRENT_JOBS: ${CTI_MAX_CONCURRENT_JOBS:-2}
+
+x-backend-build: &backend-build
+  context: ./backend
+  args:
+    UV_SYNC_ARGS: "" # include dev dependencies so tests can run in the container
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cti}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-cti}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build: *backend-build
+    image: cti-warehouse-backend:dev
+    environment: *backend-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - uploads:/var/lib/cti/uploads
+      - artifacts:/var/lib/cti/artifacts
+      - ./data:/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  worker:
+    build: *backend-build
+    image: cti-warehouse-backend:dev
+    command: ["cti", "worker", "--heartbeat-file", "/tmp/cti-worker.beat"]
+    environment: *backend-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - uploads:/var/lib/cti/uploads
+      - artifacts:/var/lib/cti/artifacts
+      - ./data:/data
+    healthcheck:
+      test: ["CMD", "cti", "worker-healthcheck", "--heartbeat-file", "/tmp/cti-worker.beat"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+
+  frontend:
+    build: ./frontend
+    environment:
+      CTI_BACKEND_PROXY_TARGET: http://backend:8000
+    depends_on:
+      - backend
+    ports:
+      - "127.0.0.1:5173:5173"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:5173/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  pgdata:
+  uploads:
+  artifacts:
