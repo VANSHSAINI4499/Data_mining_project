@@ -8,7 +8,7 @@ import { PlannedFeature } from "./components/PlannedFeature";
 import { ErrorState, LoadingSkeleton } from "./components/States";
 import { hasRole, SESSION_KEY, useSession } from "./hooks/useSession";
 import { NAV_PAGES, PLANNED_PATHS } from "./lib/navigation";
-import { DataQualityPage, SettingsPage } from "./pages/AdminPages";
+import { AuditPage, DataQualityPage, SettingsPage } from "./pages/AdminPages";
 import { EventDetailPage, EventsPage } from "./pages/EventPages";
 import { BatchDetailPage, IngestionPage } from "./pages/IngestionPages";
 import { AlertDetailPage, AlertsPage, CaseDetailPage, CasesPage } from "./pages/InvestigationPages";
@@ -49,6 +49,7 @@ const PAGE_ELEMENTS: Record<string, () => ReactElement> = {
   "/models/:modelId": ModelDetailPage,
   "/data-quality": DataQualityPage,
   "/settings": SettingsPage,
+  "/audit": AuditPage,
 };
 
 export function App() {

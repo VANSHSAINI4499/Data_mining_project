@@ -6,6 +6,7 @@ import type { User } from "../api/types";
 import { DataTable } from "../components/DataTable";
 import { ErrorState } from "../components/States";
 import {
+  Badge,
   Button,
   Card,
   CodeBlockText,
@@ -542,6 +543,120 @@ export function SettingsPage() {
       {tab === "feeds" && isAdmin && <FeedsAdminTab />}
       {tab === "rules" && <RulesTab isAdmin={isAdmin} isAnalyst={isAnalyst} />}
       {tab === "assets" && <AssetsTab isAdmin={isAdmin} />}
+    </div>
+  );
+}
+
+// --- audit history ---------------------------------------------------------------------------------
+
+interface AuditRecord {
+  audit_id: number;
+  occurred_at: string;
+  actor_type: string;
+  actor: string | null;
+  action: string;
+  target_type: string | null;
+  target_id: string | null;
+  outcome: string;
+  request_id: string | null;
+  ip_address: string | null;
+  details: Record<string, unknown>;
+}
+
+export function AuditPage() {
+  const { range } = useTimeRange();
+  const [action, setAction] = useSearchParam("action", "");
+  const [outcome, setOutcome] = useSearchParam("outcome", "");
+  const [targetType, setTargetType] = useSearchParam("target_type", "");
+  const records = usePaged<AuditRecord>("/audit-records", {
+    from: range.from,
+    to: range.to,
+    action: action || undefined,
+    outcome: outcome || undefined,
+    target_type: targetType || undefined,
+    limit: 100,
+  });
+  const first = records.data?.pages[0] as { known_actions?: string[] } | undefined;
+  return (
+    <div className="space-y-4">
+      <PageHeader title="Audit history">
+        <TimeRangePicker />
+      </PageHeader>
+      <Notice>Read-only. Audit records cannot be edited or deleted from the application.</Notice>
+      <div className="flex flex-wrap gap-2">
+        <Field label="Action">
+          <select className={inputClass} value={action} onChange={(e) => setAction(e.target.value)}>
+            <option value="">Any</option>
+            {first?.known_actions?.map((a) => (
+              <option key={a}>{a}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Outcome">
+          <select
+            className={inputClass}
+            value={outcome}
+            onChange={(e) => setOutcome(e.target.value)}
+          >
+            <option value="">Any</option>
+            <option value="success">success</option>
+            <option value="denied">denied</option>
+            <option value="error">error</option>
+          </select>
+        </Field>
+        <Field label="Target type">
+          <input
+            className={inputClass}
+            value={targetType}
+            onChange={(e) => setTargetType(e.target.value)}
+          />
+        </Field>
+      </div>
+      <Card>
+        <DataTable
+          caption="Audit records"
+          rows={records.data?.pages.flatMap((p) => p.items)}
+          rowKey={(r) => String(r.audit_id)}
+          isPending={records.isPending}
+          error={records.error}
+          onRetry={() => void records.refetch()}
+          emptyTitle="No audit records match"
+          hasMore={records.hasNextPage}
+          onLoadMore={() => void records.fetchNextPage()}
+          loadingMore={records.isFetchingNextPage}
+          columns={[
+            { key: "t", header: "Time (UTC)", render: (r) => formatTime(r.occurred_at) },
+            { key: "a", header: "Actor", render: (r) => `${r.actor ?? "—"} (${r.actor_type})` },
+            { key: "act", header: "Action", render: (r) => r.action },
+            {
+              key: "tg",
+              header: "Target",
+              render: (r) => (r.target_type ? `${r.target_type} ${r.target_id ?? ""}` : "—"),
+            },
+            {
+              key: "o",
+              header: "Outcome",
+              render: (r) => (
+                <Badge
+                  tone={r.outcome === "success" ? "ok" : r.outcome === "denied" ? "warn" : "danger"}
+                >
+                  {r.outcome}
+                </Badge>
+              ),
+            },
+            {
+              key: "r",
+              header: "Request ID",
+              render: (r) => <code className="text-xs">{r.request_id ?? "—"}</code>,
+            },
+            {
+              key: "d",
+              header: "Details",
+              render: (r) => <SafeText value={JSON.stringify(r.details)} max={80} />,
+            },
+          ]}
+        />
+      </Card>
     </div>
   );
 }

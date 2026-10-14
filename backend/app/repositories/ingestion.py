@@ -7,17 +7,17 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import and_, func, insert, or_, select, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+import psycopg
+from psycopg import sql
+from psycopg.types.json import Jsonb
+from sqlalchemy import and_, func, insert, or_, select, text, update
 from sqlalchemy.orm import Session
 
 from app.models import (
     DimAsset,
     DimSource,
-    EventGroundTruth,
     FactSecurityEvent,
     IngestionBatch,
-    RawRecord,
     RejectedRecord,
 )
 
@@ -126,34 +126,111 @@ def ensure_partitions(session: Session, start: datetime, end: datetime) -> int:
     return int(session.scalar(select(func.ensure_event_partitions(start, end))) or 0)
 
 
+# Bulk loading uses COPY into a temporary table followed by INSERT ... SELECT, which avoids
+# building very large multi-row INSERT statements (measured in Phase 7, NFR-03).
+JSON_COLUMNS = frozenset({"raw_payload", "attributes"})
+
+
+def _copy_rows(
+    session: Session, table: str, columns: list[str], rows: list[dict[str, Any]]
+) -> None:
+    conn = session.connection().connection.driver_connection
+    assert isinstance(conn, psycopg.Connection)
+    statement = sql.SQL("COPY {} ({}) FROM STDIN").format(
+        sql.Identifier(table), sql.SQL(", ").join(map(sql.Identifier, columns))
+    )
+    with conn.cursor() as cur, cur.copy(statement) as copy:
+        for row in rows:
+            copy.write_row(
+                [Jsonb(row.get(c)) if c in JSON_COLUMNS else row.get(c) for c in columns]
+            )
+
+
+def _cols(columns: list[str]) -> str:
+    """Quoted identifiers. Callers pass fixed lists or names checked against the model."""
+    bad = [c for c in columns if not c.replace("_", "").isalnum()]
+    if bad:
+        raise ValueError(f"invalid column names {bad}")
+    return ", ".join(f'"{c}"' for c in columns)
+
+
+def _temp_like(session: Session, name: str, source: str, columns: list[str]) -> None:
+    # CREATE TABLE AS copies column types but not NOT NULL constraints or defaults.
+    session.execute(
+        text(
+            f"CREATE TEMP TABLE {name} ON COMMIT DROP AS "  # noqa: S608 - fixed identifiers
+            f"SELECT {_cols(columns)} FROM {source} WITH NO DATA"
+        )
+    )
+
+
+RAW_COLUMNS = [
+    "batch_id",
+    "record_number",
+    "raw_payload",
+    "raw_text",
+    "raw_truncated",
+    "raw_nul_escaped",
+    "record_sha256",
+]
+
+
 def insert_raw_records(session: Session, rows: list[dict[str, Any]]) -> list[int]:
+    """Insert raw records; returns their IDs in the order of ``rows``."""
     if not rows:
         return []
+    _temp_like(session, "tmp_raw_record", "raw_record", RAW_COLUMNS)
+    _copy_rows(session, "tmp_raw_record", RAW_COLUMNS, rows)
+    cols = _cols(RAW_COLUMNS)
     result = session.execute(
-        insert(RawRecord).returning(RawRecord.raw_record_id, sort_by_parameter_order=True), rows
+        text(
+            f"INSERT INTO raw_record ({cols}) SELECT {cols} FROM tmp_raw_record "  # noqa: S608
+            "RETURNING raw_record_id, record_number"
+        )
     )
-    return [r[0] for r in result]
+    by_number = {number: rid for rid, number in result}
+    session.execute(text("DROP TABLE tmp_raw_record"))
+    return [by_number[r["record_number"]] for r in rows]
 
 
 def insert_events(session: Session, rows: list[dict[str, Any]]) -> list[tuple[int, datetime, str]]:
     """Insert, skipping duplicates. Returns (event_id, event_time, fingerprint) of new rows."""
     if not rows:
         return []
-    stmt = (
-        pg_insert(FactSecurityEvent)
-        .on_conflict_do_nothing(index_elements=["source_id", "event_fingerprint", "event_time"])
-        .returning(
-            FactSecurityEvent.event_id,
-            FactSecurityEvent.event_time,
-            FactSecurityEvent.event_fingerprint,
+    columns = sorted({key for row in rows for key in row} - {"event_id"})
+    valid = set(FactSecurityEvent.__table__.columns.keys())
+    unknown = set(columns) - valid
+    if unknown:
+        raise ValueError(f"unknown event columns {sorted(unknown)}")
+    _temp_like(session, "tmp_event", "fact_security_event", columns)
+    _copy_rows(session, "tmp_event", columns, rows)
+    cols = _cols(columns)
+    result = session.execute(
+        text(
+            f"INSERT INTO fact_security_event ({cols}) SELECT {cols} FROM tmp_event "  # noqa: S608
+            "ON CONFLICT (source_id, event_fingerprint, event_time) DO NOTHING "
+            "RETURNING event_id, event_time, event_fingerprint"
         )
     )
-    return [(r[0], r[1], r[2]) for r in session.execute(stmt, rows)]
+    inserted = [(r[0], r[1], r[2]) for r in result]
+    session.execute(text("DROP TABLE tmp_event"))
+    return inserted
+
+
+GT_COLUMNS = [
+    "event_id",
+    "event_time",
+    "label_raw",
+    "attack_category_id",
+    "is_attack",
+    "mapping_status",
+    "label_mapping_version",
+]
 
 
 def insert_ground_truth(session: Session, rows: list[dict[str, Any]]) -> None:
     if rows:
-        session.execute(insert(EventGroundTruth), rows)
+        _copy_rows(session, "event_ground_truth", GT_COLUMNS, rows)
 
 
 def insert_rejections(session: Session, rows: list[dict[str, Any]]) -> None:

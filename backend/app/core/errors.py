@@ -71,3 +71,11 @@ class UnsupportedMediaTypeError(DomainError):
 
 class LengthRequiredError(DomainError):
     status, slug, title = 411, "length-required", "Content-Length required"
+
+
+class RateLimitedError(DomainError):
+    status, slug, title = 429, "rate-limited", "Too many requests"
+
+    def __init__(self, detail: str, *, retry_after: float) -> None:
+        super().__init__(detail)
+        self.retry_after = retry_after

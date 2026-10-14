@@ -3,7 +3,6 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
-import { PLANNED_PAGES } from "./lib/navigation";
 import { renderApp } from "./test/render";
 import { API, problem, problemResponse, server, sessionFor } from "./test/server";
 
@@ -132,18 +131,39 @@ describe("navigation and planned pages", () => {
     expect(await screen.findByRole("heading", { name: "Access denied" })).toBeInTheDocument();
   });
 
-  it.each(PLANNED_PAGES.map((p) => [p.label, p.path] as const))(
-    "%s shows a not-yet-available state with no data",
-    async (label, path) => {
-      loggedInAs("admin");
-      renderApp(path);
-      const page = await screen.findByTestId("planned-feature");
-      expect(within(page).getByRole("heading", { name: label })).toBeInTheDocument();
-      expect(page).toHaveTextContent("This page is not available yet.");
-      expect(within(page).queryByRole("table")).not.toBeInTheDocument();
-      expect(within(page).queryByRole("figure")).not.toBeInTheDocument();
-    },
-  );
+  it("shows the read-only audit history to admins", async () => {
+    loggedInAs("admin");
+    server.use(
+      http.get(`${API}/audit-records`, () =>
+        HttpResponse.json({
+          items: [
+            {
+              audit_id: 7,
+              occurred_at: "2026-10-15T00:00:00Z",
+              actor_type: "user",
+              actor: "root",
+              action: "auth.login",
+              target_type: null,
+              target_id: null,
+              outcome: "denied",
+              request_id: "req-1",
+              ip_address: "127.0.0.1",
+              details: { reason: "bad_password" },
+            },
+          ],
+          next_cursor: null,
+          limit: 100,
+          known_actions: ["auth.login"],
+        }),
+      ),
+    );
+    renderApp("/audit");
+    expect(await screen.findByRole("heading", { name: "Audit history" })).toBeInTheDocument();
+    const table = await screen.findByRole("table", { name: "Audit records" });
+    expect(within(table).getByText("denied")).toBeInTheDocument();
+    expect(within(table).getByText("root (user)")).toBeInTheDocument();
+    expect(screen.queryByTestId("planned-feature")).not.toBeInTheDocument();
+  });
 
   it("renders implemented pages instead of placeholders", async () => {
     loggedInAs("viewer");

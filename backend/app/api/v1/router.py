@@ -6,6 +6,7 @@ from fastapi import APIRouter
 
 from app.api.v1 import (
     anomalies,
+    audit,
     auth,
     correlation,
     dashboard,
@@ -39,6 +40,7 @@ ROUTERS = (
     correlation.router,
     investigations.router,
     dashboard.router,
+    audit.router,
 )
 
 api_router = APIRouter(prefix=API_PREFIX)

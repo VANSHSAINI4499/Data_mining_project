@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core import clock
+from app.core.ratelimit import LIMITS
 from app.core.security import Role
 from app.models import AuditLog, AuthSession
 from tests.conftest import DEFAULT_PASSWORD, LoggedIn
@@ -70,8 +71,10 @@ def test_failed_login_is_generic_and_audited(
 
 
 def test_lockout_after_ten_failures(
-    client: TestClient, make_user: Callable[..., str], db: Session
+    client: TestClient, make_user: Callable[..., str], db: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Isolate the account lockout from the per-IP login rate limit (tested separately).
+    monkeypatch.setitem(LIMITS, "login", 1000)
     make_user("alice")
     for _ in range(10):
         assert (

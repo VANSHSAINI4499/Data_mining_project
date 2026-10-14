@@ -75,7 +75,7 @@ Based on the OWASP File Upload Cheat Sheet (<https://cheatsheetseries.owasp.org/
 
 ## 8. Rate limiting
 
-- In-process token-bucket limiter (MVP has a single API process): limits listed in [API_SPECIFICATION.md](API_SPECIFICATION.md#8-rate-limiting).
+- In-process token-bucket limiter (MVP has a single API process): limits listed in [API_SPECIFICATION.md](API_SPECIFICATION.md#8-rate-limiting). Implemented in Phase 7 (`app/core/ratelimit.py`, `RateLimitMiddleware`): authenticated requests are keyed by session (a hash of the session cookie), anonymous requests by client IP; login is keyed by client IP + username. Health endpoints are not limited. Each API process has its own buckets.
 - If multiple API processes are introduced, limits move to a shared store (Redis, via ADR).
 - Job concurrency limits: at most `CTI_MAX_CONCURRENT_JOBS` (default 2) running per worker; training jobs at most 1 concurrently.
 

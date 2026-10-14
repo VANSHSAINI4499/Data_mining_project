@@ -212,5 +212,5 @@ Public datasets are downloaded manually (UNSW-NB15: <https://research.unsw.edu.a
 | `cti ti-import --feed F --format csv\|stix PATH` | Import indicators into feed `F` inline; prints created/updated/rejected counts. | 5 |
 | `cti match-indicators (--batch-id ID ... \| --from T --to T) [--include-expired]` | Exact indicator matching against stored events (idempotent). | 5 |
 | `cti correlate --from T --to T [--rule K ...]` | Run enabled correlation rules; prints per-rule evidence counts, matches, and alerts created/updated. | 5 |
-| `cti retention apply --dry-run\|--execute` | Apply retention policy (audited). | 7 |
+| `cti retention apply (--dry-run \| --execute)` | Apply the retention policy in [DATABASE_DESIGN.md §9](DATABASE_DESIGN.md#9-retention) (`CTI_RETENTION_*` settings): uploaded files under `CTI_UPLOAD_DIR`, rejected records, unreferenced finished jobs, expired sessions, audit records older than `CTI_RETENTION_AUDIT_DAYS` (≥ 365). Events and raw records are never deleted. Both modes print counts and are audited. | 7 |
 | `cti watch` | Inbox-folder incremental ingestion. | 8 |

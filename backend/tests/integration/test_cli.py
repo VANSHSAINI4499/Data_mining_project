@@ -91,3 +91,92 @@ def test_threat_intel_and_correlation_commands(
     assert summary["rules"]["bruteforce_then_success"]["alerts_created"] == 1
     with pytest.raises(SystemExit):
         cli.main(["correlate", "--from", "2026-01-01T00:00:00", "--to", "2026-01-02T00:00:00"])
+
+
+def test_retention_dry_run_then_execute(
+    cli_db: sessionmaker[Session],
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import uuid
+    from datetime import timedelta
+
+    from app.core import clock
+    from app.core.config import get_settings
+    from app.models import AuthSession, IngestionBatch
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "upload_dir", tmp_path / "uploads")
+    settings.upload_dir.mkdir()
+    upload = settings.upload_dir / "old.jsonl"
+    upload.write_text("{}\n", encoding="utf-8")
+    elsewhere = tmp_path / "import-root-file.jsonl"
+    elsewhere.write_text("{}\n", encoding="utf-8")
+    long_ago = clock.now() - timedelta(days=400)
+    with cli_db() as session:
+        from app.services.actors import CLI_ACTOR
+        from app.services.reference import seed_reference
+
+        seed_reference(session, CLI_ACTOR)
+    with cli_db() as session, session.begin():
+        from app.models import DimSource
+
+        source_id = session.scalar(
+            select(DimSource.source_id).where(DimSource.source_key == "synthetic")
+        )
+        user = AppUser(user_id=uuid.uuid4(), username="olduser", password_hash="x", role="viewer")
+        session.add(user)
+        session.flush()
+        session.add(
+            AuthSession(
+                session_id=uuid.uuid4(),
+                user_id=user.user_id,
+                token_hash="t" * 64,
+                csrf_token_hash="c" * 64,
+                expires_at=long_ago,
+                last_seen_at=long_ago,
+            )
+        )
+        for path in (upload, elsewhere):
+            session.add(
+                IngestionBatch(
+                    batch_id=uuid.uuid4(),
+                    source_id=source_id,
+                    adapter="canonical_jsonl",
+                    adapter_version="1.0",
+                    original_filename=path.name,
+                    stored_path=str(path),
+                    file_sha256=uuid.uuid4().hex * 2,
+                    file_size_bytes=3,
+                    status="completed",
+                    finished_at=long_ago,
+                )
+            )
+        session.add(
+            Job(
+                job_id=uuid.uuid4(),
+                job_type="diagnostic",
+                status="succeeded",
+                params={},
+                finished_at=long_ago,
+            )
+        )
+    capsys.readouterr()
+    assert cli.main(["retention", "apply", "--dry-run"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["dry_run"] is True
+    assert report["counts"]["uploaded_files"] == 1
+    assert report["counts"]["expired_sessions"] == 1
+    assert report["counts"]["jobs"] == 1
+    assert upload.exists()
+
+    assert cli.main(["retention", "apply", "--execute"]) == 0
+    assert json.loads(capsys.readouterr().out)["counts"]["uploaded_files"] == 1
+    assert not upload.exists() and elsewhere.exists()
+    with cli_db() as session:
+        assert session.scalar(select(AuthSession).where(AuthSession.expires_at == long_ago)) is None
+        actions = set(session.scalars(select(AuditLog.action)))
+        assert {"retention.dry_run", "retention.applied"} <= actions
+    with pytest.raises(SystemExit):
+        cli.main(["retention", "apply"])

@@ -102,5 +102,5 @@ export const NAV_PAGES: NavItem[] = [
 ];
 
 /** Pages whose backend endpoints are not built yet; they render an honest placeholder. */
-export const PLANNED_PATHS = new Set(["/audit"]);
+export const PLANNED_PATHS = new Set<string>();
 export const PLANNED_PAGES: NavItem[] = NAV_PAGES.filter((p) => PLANNED_PATHS.has(p.path));

@@ -6,7 +6,9 @@ from fastapi import APIRouter, Request, Response, status
 
 from app.api.deps import SESSION_COOKIE, SettingsDep, Viewer
 from app.core.db import DbSession
+from app.core.errors import RateLimitedError
 from app.core.logging import client_ip_var
+from app.core.ratelimit import LIMITS
 from app.schemas.auth import LoginRequest, SessionInfo, UserOut
 from app.services import auth as auth_service
 
@@ -23,6 +25,10 @@ def login(
     session: DbSession,
     settings: SettingsDep,
 ) -> SessionInfo:
+    limiter = request.app.state.rate_limiter
+    wait = limiter.hit(f"login:{client_ip_var.get()}:{body.username.lower()}", LIMITS["login"])
+    if wait is not None:
+        raise RateLimitedError("too many login attempts; retry later", retry_after=wait)
     result = auth_service.login(
         session,
         settings,

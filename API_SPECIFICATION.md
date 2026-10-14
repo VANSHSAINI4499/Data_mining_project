@@ -305,4 +305,5 @@ In-process limits (single API process in the MVP; see [SECURITY_REQUIREMENTS.md]
 | §5.12 threat intelligence & ATT&CK | Implemented (Phase 5) except TAXII polling: `POST /threat-intel/feeds/{id}/sync` returns `409` (deferred to Phase 8). `GET /threat-intel/imports/{id}` added for import reports. |
 | §5.13 correlation, §5.14 alerts & cases, §5.15 feedback | Implemented (Phase 5). Alert evidence items carry the `event_id` they derive from (for classification results and indicator matches as well as events). |
 | §5.16 dashboard | Implemented (Phase 6): `GET /dashboard/overview?from&to`. |
-| §5.18 audit records | Phase 7. |
+| §5.18 audit records | Implemented (Phase 7). `action` accepts an exact action or a prefix ending in `.` (e.g. `alert.`); responses include `known_actions` for filter lists. |
+| §8 rate limiting | Implemented (Phase 7): 429 problem responses with `Retry-After`; limits are per session (per IP when anonymous; per IP + username for login). |

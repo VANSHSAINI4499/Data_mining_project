@@ -6,11 +6,18 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
-from app.api.middleware import RequestContextMiddleware, UploadLimitMiddleware
+from app.api.deps import SESSION_COOKIE
+from app.api.middleware import (
+    RateLimitMiddleware,
+    RequestContextMiddleware,
+    SecurityHeadersMiddleware,
+    UploadLimitMiddleware,
+)
 from app.api.problems import install_problem_handlers
 from app.api.v1.router import API_PREFIX, api_router
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
+from app.core.ratelimit import RateLimiter
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -36,6 +43,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         expose_headers=["X-Request-ID", "Retry-After"],
     )
     app.add_middleware(UploadLimitMiddleware, max_bytes=settings.max_upload_mb * 1024 * 1024)
+    # One limiter per application instance (single API process in the MVP).
+    app.state.rate_limiter = RateLimiter()
+    app.add_middleware(
+        RateLimitMiddleware, limiter=app.state.rate_limiter, cookie_name=SESSION_COOKIE
+    )
+    app.add_middleware(
+        SecurityHeadersMiddleware, docs_path=f"{API_PREFIX}/docs" if docs_enabled else None
+    )
     # Added last so it is outermost: every response, including CORS and 500s, gets an ID.
     app.add_middleware(RequestContextMiddleware)
     app.include_router(api_router)

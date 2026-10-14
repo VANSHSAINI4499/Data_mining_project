@@ -55,6 +55,13 @@ class Settings(BaseSettings):
     worker_poll_seconds: float = Field(default=2.0, gt=0)
     # Days of history re-matched after an indicator import changes indicators (0 disables).
     ti_retrohunt_days: int = Field(default=30, ge=0, le=3650)
+    # Retention (DATABASE_DESIGN.md §9), applied only by `cti retention apply`.
+    retention_upload_days: int = Field(default=30, ge=1)
+    retention_rejected_days: int = Field(default=90, ge=1)
+    retention_job_succeeded_days: int = Field(default=90, ge=1)
+    retention_job_failed_days: int = Field(default=180, ge=1)
+    retention_session_days: int = Field(default=7, ge=1)
+    retention_audit_days: int = Field(default=365, ge=365)
 
     @field_validator("cors_origins", mode="before")
     @classmethod

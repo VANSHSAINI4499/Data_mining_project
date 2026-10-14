@@ -412,6 +412,17 @@ def cmd_correlate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_retention(args: argparse.Namespace) -> int:
+    from app.services import retention
+
+    if args.dry_run == args.execute:
+        raise SystemExit("error: give exactly one of --dry-run or --execute")
+    with get_session_factory()() as session:
+        report = retention.apply(session, get_settings(), CLI_ACTOR, dry_run=args.dry_run)
+    print(json.dumps(report.as_dict(), indent=2))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cti", description="CTI Warehouse operator commands")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -497,6 +508,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--to", required=True)
     p.add_argument("--rule", action="append", help="limit to this rule_key (repeatable)")
     p.set_defaults(func=cmd_correlate)
+
+    p = sub.add_parser("retention", help="apply the data-retention policy (audited)")
+    p.add_argument("action", choices=["apply"])
+    p.add_argument("--dry-run", action="store_true", help="count only; change nothing")
+    p.add_argument("--execute", action="store_true", help="delete per policy")
+    p.set_defaults(func=cmd_retention)
 
     p = sub.add_parser("worker", help="run the background job worker")
     p.add_argument("--heartbeat-file", help="file touched every poll interval (health checks)")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -9,7 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.core.errors import DomainError, FieldError
+from app.core.errors import DomainError, FieldError, RateLimitedError
 from app.core.logging import request_id_var
 
 PROBLEM_BASE = "https://cti-warehouse.local/problems/"
@@ -89,7 +90,11 @@ def _field_errors(exc: RequestValidationError) -> list[FieldError]:
 def install_problem_handlers(app: FastAPI) -> None:
     @app.exception_handler(DomainError)
     async def _domain(request: Request, exc: DomainError) -> JSONResponse:
+        headers = None
+        if isinstance(exc, RateLimitedError):
+            headers = {"Retry-After": str(max(1, math.ceil(exc.retry_after)))}
         return problem_response(
+            headers=headers,
             status=exc.status,
             slug=exc.slug,
             title=exc.title,
