@@ -12,8 +12,8 @@ export interface NavItem {
   detailPaths?: string[];
 }
 
-// Routes from FRONTEND_SPECIFICATION.md §3. The overview is implemented separately.
-export const PLANNED_PAGES: NavItem[] = [
+// Routes from FRONTEND_SPECIFICATION.md §3, in sidebar order. The overview is separate.
+export const NAV_PAGES: NavItem[] = [
   {
     path: "/ingestion",
     label: "Data ingestion",
@@ -96,7 +96,11 @@ export const PLANNED_PAGES: NavItem[] = [
     path: "/audit",
     label: "Audit history",
     minRole: "admin",
-    milestone: "6.5",
+    milestone: "7",
     summary: "Read-only record of who changed what, and when.",
   },
 ];
+
+/** Pages whose backend endpoints are not built yet; they render an honest placeholder. */
+export const PLANNED_PATHS = new Set(["/audit"]);
+export const PLANNED_PAGES: NavItem[] = NAV_PAGES.filter((p) => PLANNED_PATHS.has(p.path));

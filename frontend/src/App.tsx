@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, type ReactElement } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router";
 
 import { onUnauthorized } from "./api/client";
@@ -7,14 +7,49 @@ import { AppShell } from "./components/AppShell";
 import { PlannedFeature } from "./components/PlannedFeature";
 import { ErrorState, LoadingSkeleton } from "./components/States";
 import { hasRole, SESSION_KEY, useSession } from "./hooks/useSession";
-import { PLANNED_PAGES } from "./lib/navigation";
+import { NAV_PAGES, PLANNED_PATHS } from "./lib/navigation";
+import { DataQualityPage, SettingsPage } from "./pages/AdminPages";
+import { EventDetailPage, EventsPage } from "./pages/EventPages";
+import { BatchDetailPage, IngestionPage } from "./pages/IngestionPages";
+import { AlertDetailPage, AlertsPage, CaseDetailPage, CasesPage } from "./pages/InvestigationPages";
 import { LoginPage } from "./pages/LoginPage";
+import {
+  AnomaliesPage,
+  AnomalyDetailPage,
+  ClassificationPage,
+  ModelDetailPage,
+  ModelsPage,
+  RunDetailPage,
+} from "./pages/MlPages";
 import { OverviewPage } from "./pages/OverviewPage";
 import { ForbiddenPage, NotFoundPage } from "./pages/StatusPages";
+import { IndicatorDetailPage, ThreatIntelPage } from "./pages/ThreatIntelPages";
 
 interface FromState {
   from?: string;
 }
+
+/** Page components by route path (FRONTEND_SPECIFICATION.md §3). */
+const PAGE_ELEMENTS: Record<string, () => ReactElement> = {
+  "/ingestion": IngestionPage,
+  "/ingestion/batches/:batchId": BatchDetailPage,
+  "/events": EventsPage,
+  "/events/:eventId": EventDetailPage,
+  "/classification": ClassificationPage,
+  "/classification/runs/:runId": RunDetailPage,
+  "/anomalies": AnomaliesPage,
+  "/anomalies/:resultId": AnomalyDetailPage,
+  "/threat-intel": ThreatIntelPage,
+  "/threat-intel/indicators/:indicatorId": IndicatorDetailPage,
+  "/alerts": AlertsPage,
+  "/alerts/:alertId": AlertDetailPage,
+  "/cases": CasesPage,
+  "/cases/:caseId": CaseDetailPage,
+  "/models": ModelsPage,
+  "/models/:modelId": ModelDetailPage,
+  "/data-quality": DataQualityPage,
+  "/settings": SettingsPage,
+};
 
 export function App() {
   const queryClient = useQueryClient();
@@ -56,20 +91,21 @@ export function App() {
       <Route path="/login" element={<Navigate to={returnTo} replace />} />
       <Route element={<AppShell user={user} />}>
         <Route index element={<OverviewPage />} />
-        {PLANNED_PAGES.flatMap((item) =>
-          [item.path, ...(item.detailPaths ?? [])].map((path) => (
-            <Route
-              key={path}
-              path={path}
-              element={
-                hasRole(user, item.minRole) ? (
-                  <PlannedFeature item={item} />
-                ) : (
-                  <ForbiddenPage role={item.minRole} />
-                )
-              }
-            />
-          )),
+        {NAV_PAGES.flatMap((item) =>
+          [item.path, ...(item.detailPaths ?? [])].map((path) => {
+            const Page = PAGE_ELEMENTS[path];
+            const content =
+              PLANNED_PATHS.has(item.path) || !Page ? <PlannedFeature item={item} /> : <Page />;
+            return (
+              <Route
+                key={path}
+                path={path}
+                element={
+                  hasRole(user, item.minRole) ? content : <ForbiddenPage role={item.minRole} />
+                }
+              />
+            );
+          }),
         )}
         <Route path="*" element={<NotFoundPage />} />
       </Route>

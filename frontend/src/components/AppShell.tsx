@@ -2,7 +2,7 @@ import { NavLink, Outlet } from "react-router";
 
 import type { User } from "../api/types";
 import { hasRole, useLogout } from "../hooks/useSession";
-import { PLANNED_PAGES } from "../lib/navigation";
+import { NAV_PAGES } from "../lib/navigation";
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
   `block rounded px-3 py-1.5 text-sm ${
@@ -11,7 +11,7 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
 
 export function AppShell({ user }: { user: User }) {
   const logout = useLogout();
-  const items = PLANNED_PAGES.filter((item) => hasRole(user, item.minRole));
+  const items = NAV_PAGES.filter((item) => hasRole(user, item.minRole));
 
   return (
     <div className="flex h-full">

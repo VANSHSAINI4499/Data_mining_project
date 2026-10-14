@@ -128,12 +128,26 @@ def list_alerts(
 
 
 def _evidence_rows(session: Session, alert_id: uuid.UUID, limit: int) -> list[dict[str, Any]]:
-    rows = session.scalars(
-        select(AlertEvidence)
-        .where(AlertEvidence.alert_id == alert_id)
-        .order_by(AlertEvidence.event_time, AlertEvidence.evidence_ref)
-        .limit(limit)
+    rows = list(
+        session.scalars(
+            select(AlertEvidence)
+            .where(AlertEvidence.alert_id == alert_id)
+            .order_by(AlertEvidence.event_time, AlertEvidence.evidence_ref)
+            .limit(limit)
+        )
     )
+    derived = {
+        "classification_result": (ClassificationResult.result_id, ClassificationResult.event_id),
+        "indicator_match": (IndicatorMatch.match_id, IndicatorMatch.event_id),
+    }
+    event_of: dict[tuple[str, int], int] = {}
+    for kind, (ref_col, event_col) in derived.items():
+        refs = [e.evidence_ref for e in rows if e.evidence_type == kind]
+        if refs:
+            for ref, event_id in session.execute(
+                select(ref_col, event_col).where(ref_col.in_(refs))
+            ):
+                event_of[(kind, ref)] = event_id
     out = []
     for e in rows:
         item = {
@@ -146,8 +160,12 @@ def _evidence_rows(session: Session, alert_id: uuid.UUID, limit: int) -> list[di
         }
         if e.evidence_type == "event":
             item["link"] = f"/api/v1/events/{e.evidence_ref}"
+            item["event_id"] = str(e.evidence_ref)
         elif e.evidence_type == "anomaly_result":
             item["link"] = f"/api/v1/anomalies/{e.evidence_ref}"
+        elif (e.evidence_type, e.evidence_ref) in event_of:
+            item["event_id"] = str(event_of[(e.evidence_type, e.evidence_ref)])
+            item["link"] = f"/api/v1/events/{item['event_id']}"
         out.append(item)
     return out
 

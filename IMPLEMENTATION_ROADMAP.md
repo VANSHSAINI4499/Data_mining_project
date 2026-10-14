@@ -23,7 +23,7 @@ flowchart LR
 | 3 | Complete except AC-3.9 (no public dataset present) | see `git log` | RF + baselines, leakage checks, registry, scoring. |
 | 4 | Complete; AC-4.4 only partly met (robust z flags the planted anomaly, Isolation Forest does not on the small synthetic sample - documented limitation) | see `git log` | Window features, robust z, Isolation Forest, explanations. |
 | 5 | Complete except: AC-5.5 partly met (4 of 5 default rules fire on the synthetic planted scenarios; `anomaly_with_malicious_classification` is covered by unit tests only because the scenario plants no src_ip anomaly with history); TAXII polling (5.6, optional) deferred to Phase 8 | see `git log` | CSV/STIX/manual indicators, exact matching, ATT&CK import + mappings, rule DSL, risk_v1, alerts/cases/feedback, CLI. |
-| 6 | Not started | | |
+| 6 | Complete; the Audit history page stays a labelled placeholder until its endpoint ships in Phase 7 | see `git log` | `/dashboard/overview`, all §5 pages on real endpoints (Recharts), page state tests, live check against the dev database. |
 | 7 | Not started | | |
 | 8 | Not started | | |
 

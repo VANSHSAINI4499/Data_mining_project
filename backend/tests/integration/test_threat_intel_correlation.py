@@ -158,6 +158,7 @@ def test_indicator_import_matching_and_correlation(
     assert breakdown["components"]["threat_intel"]["value"] > 0
     assert breakdown["score"] == detail["risk_score"]
     assert {e["category"] for e in detail["evidence"]} == {"threat_intel_match"}
+    assert all(e["event_id"] and e["link"].endswith(e["event_id"]) for e in detail["evidence"])
 
     # Re-running correlation updates existing alerts instead of duplicating them.
     rerun = _correlate(admin, session_factory)

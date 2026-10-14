@@ -8,6 +8,7 @@ from app.api.v1 import (
     anomalies,
     auth,
     correlation,
+    dashboard,
     events,
     health,
     ingestion,
@@ -37,6 +38,7 @@ ROUTERS = (
     threat_intel.router,
     correlation.router,
     investigations.router,
+    dashboard.router,
 )
 
 api_router = APIRouter(prefix=API_PREFIX)

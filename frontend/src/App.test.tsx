@@ -102,10 +102,11 @@ describe("overview system status", () => {
     expect(screen.getByText("Failing: migrations_behind")).toBeInTheDocument();
   });
 
-  it("shows an honest empty state instead of security statistics", async () => {
+  it("shows an honest empty state and checklist when there is no data", async () => {
     loggedInAs("admin");
     renderApp("/");
     expect(await screen.findByText("No security analytics yet")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Getting started" })).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(screen.queryByRole("figure")).not.toBeInTheDocument();
   });
@@ -144,10 +145,14 @@ describe("navigation and planned pages", () => {
     },
   );
 
-  it("renders detail routes with the same planned state", async () => {
+  it("renders implemented pages instead of placeholders", async () => {
     loggedInAs("viewer");
-    renderApp("/events/12345");
-    expect(await screen.findByTestId("planned-feature")).toBeInTheDocument();
+    renderApp("/events");
+    expect(await screen.findByRole("heading", { name: "Event explorer" })).toBeInTheDocument();
+    expect(screen.queryByTestId("planned-feature")).not.toBeInTheDocument();
+    expect(
+      await screen.findByText("No events match these filters in the selected range"),
+    ).toBeInTheDocument();
   });
 
   it("shows a not-found page for unknown routes", async () => {
