@@ -20,7 +20,7 @@ flowchart LR
 |---|---|---|---|
 | 1 | Complete (Docker verification AC-1.2D not run) | `57d353c` | Native setup verified. |
 | 2 | Complete except AC-2.8 (no public dataset present) | see `git log` | 9 adapters, DQ, events/analytics API, synthetic generator. |
-| 3 | Not started | | |
+| 3 | Complete except AC-3.9 (no public dataset present) | see `git log` | RF + baselines, leakage checks, registry, scoring. |
 | 4 | Not started | | |
 | 5 | Not started | | |
 | 6 | Not started | | |

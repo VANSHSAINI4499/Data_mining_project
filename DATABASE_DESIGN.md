@@ -356,3 +356,4 @@ Long-running jobs must not hold one transaction for the whole run.
 - `ingestion_batch` also has `metadata jsonb` (options, variant, header map, encodings, per-field warning counts, unmapped labels) and the file-level uniqueness index excludes rows with `status = 'duplicate'`.
 - Autogenerate/drift checks ignore monthly partitions and PostgreSQL's internal per-partition foreign keys (`app/models/autogen.py`).
 - Database sessions are pinned to `timezone=UTC`.
+- Phase 3 migration `f0d5d5612edb` creates the ML tables, including `anomaly_result` (used from Phase 4). Additional columns beyond §3.5: `ml_training_run.name`, `leakage_checks`, `warnings_acknowledged`; `ml_model.status_note`; `ml_scoring_run.evaluation_only`, `rows_skipped`.

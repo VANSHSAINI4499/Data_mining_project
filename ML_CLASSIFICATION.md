@@ -234,3 +234,17 @@ max_minutes = 30
 - Flow-level features cannot see payloads; some web attacks are hard to separate from benign HTTP flows.
 - Rare classes (very few samples) produce unstable per-class metrics; confidence intervals and support are always shown.
 - Category taxonomies differ across datasets; merged categories hide sub-type confusion.
+
+## 16. Implementation notes (Phase 3)
+
+- Code: `app/ml/features.py` (feature sets, denylist), `app/ml/classification/training.py` (pure training/evaluation), `app/ml/artifacts.py` (persistence and integrity), `app/services/classification.py` and `app/services/models.py` (runs, scoring, registry, promotion gate).
+- The selected Random Forest is fitted on the **training split only** (not train + validation), so validation and test reports describe exactly the persisted model.
+- A split that cannot keep feature-vector groups apart (fewer distinct groups than folds) fails the run with an explanatory `TrainingError` instead of producing a leaky split.
+- Label conflicts (identical feature vectors with different labels) are excluded before splitting, so data with only conflicting rows fails with "need at least two distinct classes".
+- The report records class counts before and after the rare-class policy (`split.after_rare_class_policy`).
+- `label_level = "raw"` models can be trained and evaluated, but only canonical-category predictions are stored as `classification_result` rows; raw-label predictions are skipped at scoring time.
+- `include_feedback_labels = true` is rejected until analyst feedback exists (Phase 5).
+- Scoring skips events whose type is not in the feature set (`incompatible_event_type`) or with more than 50 % missing features; both counts are stored on the scoring run.
+- The comparison with the active model is computed automatically during training when the feature sets match; otherwise the report states why it was skipped.
+- CLI training/scoring run inline (`cti train classifier`, `cti score classifier`); the API enqueues jobs for the worker.
+- Measured example (synthetic data, seed 42, 6–10 days, not a benchmark): see the Phase 3 commit message; results on public datasets have not been produced because no dataset is present (AC-3.9 not run).

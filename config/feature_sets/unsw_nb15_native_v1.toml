@@ -1,0 +1,13 @@
+# flow_v1 plus allow-listed UNSW-NB15 attributes present in both the raw files and the
+# training/testing partitions. TTL-based features are reported in the literature as possible
+# shortcut features for this dataset; the single-feature leakage check will flag them if so.
+
+name = "unsw_nb15_native_v1"
+version = 1
+extends = "flow_v1"
+event_types = ["network_flow"]
+attributes = [
+  "sttl", "dttl", "sloss", "dloss", "sload", "dload", "swin", "dwin", "tcprtt", "synack",
+  "ackdat", "trans_depth", "ct_srv_src", "ct_state_ttl", "ct_dst_ltm", "ct_src_dport_ltm",
+  "ct_dst_sport_ltm", "ct_dst_src_ltm", "ct_src_ltm", "ct_srv_dst", "is_sm_ips_ports",
+]

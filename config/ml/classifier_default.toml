@@ -1,0 +1,29 @@
+# Default classifier training configuration (ML_CLASSIFICATION.md §14).
+# `snapshot.batch_ids` must be provided per run (CLI --batch-id or API body).
+
+name = "attack_classifier"
+random_seed = 42
+feature_set = "flow_v1"
+label_level = "canonical"
+split_strategy = "group_stratified"   # "temporal" | "predefined"
+group_key = "feature_hash"            # or "conversation"
+test_fraction = 0.2
+validation_fraction = 0.2
+include_raw_dst_port = false
+min_class_support_train = 50
+rare_class_policy = "merge"           # or "exclude"
+max_majority_ratio = 10.0             # 0 disables down-sampling (training split only)
+include_feedback_labels = false
+bootstrap_resamples = 1000
+
+[snapshot]
+batch_ids = []
+event_types = ["network_flow"]
+
+[models.random_forest]
+n_estimators = [100, 300]
+max_depth = [0, 20]                   # 0 means unlimited
+min_samples_leaf = [1, 5]
+
+[budget]
+max_minutes = 30

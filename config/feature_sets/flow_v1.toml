@@ -1,0 +1,15 @@
+# Cross-source flow features (ML_CLASSIFICATION.md §4). Uses only canonical fields, so it applies
+# to any network_flow source. Byte/packet semantics differ by sensor (DATA_INGESTION.md §4.4):
+# a model trained on one source is not assumed valid on another.
+
+name = "flow_v1"
+version = 1
+event_types = ["network_flow"]
+
+numeric = ["duration_s", "bytes_out", "bytes_in", "packets_out", "packets_in"]
+derived = [
+  "total_bytes", "total_packets", "bytes_per_packet_out", "bytes_per_packet_in",
+  "out_in_byte_ratio", "packets_per_second", "bytes_per_second",
+]
+categorical = ["protocol", "dst_port_class"]
+attributes = []

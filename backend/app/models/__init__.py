@@ -1,6 +1,13 @@
 """ORM models. Importing this package registers every table on ``Base.metadata``."""
 
 from app.models.base import Base
+from app.models.ml import (
+    AnomalyResult,
+    ClassificationResult,
+    MlModel,
+    MlScoringRun,
+    MlTrainingRun,
+)
 from app.models.ops import AppUser, AuditLog, AuthSession, DimDate, Job
 from app.models.warehouse import (
     DataQualityResult,
@@ -15,10 +22,12 @@ from app.models.warehouse import (
 )
 
 __all__ = [
+    "AnomalyResult",
     "AppUser",
     "AuditLog",
     "AuthSession",
     "Base",
+    "ClassificationResult",
     "DataQualityResult",
     "DimAsset",
     "DimAttackCategory",
@@ -28,6 +37,9 @@ __all__ = [
     "FactSecurityEvent",
     "IngestionBatch",
     "Job",
+    "MlModel",
+    "MlScoringRun",
+    "MlTrainingRun",
     "RawRecord",
     "RejectedRecord",
 ]

@@ -34,6 +34,8 @@ FILTER_PARAMS = (
     "signature_id",
     "ground_truth_category",
     "time_quality",
+    "predicted_category",
+    "min_predicted_score",
 )
 
 
@@ -53,6 +55,8 @@ def event_filters(
     signature_id: Annotated[int | None, Query(ge=0)] = None,
     ground_truth_category: Annotated[list[str] | None, Query()] = None,
     time_quality: Annotated[str | None, Query(pattern="^(exact|second|assumed)$")] = None,
+    predicted_category: Annotated[list[str] | None, Query()] = None,
+    min_predicted_score: Annotated[float | None, Query(ge=0, le=1)] = None,
 ) -> EventFilters:
     return EventFilters(
         start=start,
@@ -70,6 +74,8 @@ def event_filters(
         signature_id=signature_id,
         ground_truth_categories=[c.upper() for c in ground_truth_category or []],
         time_quality=time_quality,
+        predicted_categories=[c.upper() for c in predicted_category or []],
+        min_predicted_score=min_predicted_score,
     )
 
 

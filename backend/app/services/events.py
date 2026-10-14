@@ -14,14 +14,36 @@ from app.core.pagination import DEFAULT_LIMIT, decode_cursor, encode_cursor
 from app.ingestion.normalize import FieldError as NormalizeFieldError
 from app.ingestion.normalize import parse_ip
 from app.repositories import events as repo
+from app.repositories import ml as ml_repo
 from app.repositories.events import EventFilters
+from app.services import classification
 
 __all__ = ["EventFilters"]
 
 TOP_GROUP_KEYS = 10
 TOP_DIMENSIONS = frozenset(repo.TOP_DIMENSIONS)
-DISTRIBUTION_DIMENSIONS = frozenset({"event_type", "protocol", "ground_truth_category", "source"})
-TIMESERIES_GROUPS = frozenset({"event_type", "source", "ground_truth_category"})
+DISTRIBUTION_DIMENSIONS = frozenset(
+    {"event_type", "protocol", "ground_truth_category", "source", "predicted_category"}
+)
+TIMESERIES_GROUPS = frozenset(
+    {"event_type", "source", "ground_truth_category", "predicted_category"}
+)
+CLASSIFIER_NAME = "attack_classifier"
+
+
+def attach_active_model(session: Session, f: EventFilters, needed: bool) -> None:
+    """Prediction filters and grouping refer to the active classifier."""
+    wants = needed or f.predicted_categories or f.min_predicted_score is not None
+    model = ml_repo.active_model(session, CLASSIFIER_NAME)
+    if model is not None:
+        f.prediction_model_id = model.model_id
+    elif wants:
+        raise ValidationFailedError(
+            "no active classifier: prediction filters need a promoted model",
+            errors=[FieldError("predicted_category", "no_active_model", "promote a model")],
+        )
+
+
 INTERVALS = frozenset(repo.INTERVALS)
 METRICS = frozenset({"event_count", "bytes_total"})
 
@@ -71,6 +93,7 @@ def search(
                 "invalid cursor", errors=[FieldError("cursor", "invalid_cursor", "malformed")]
             ) from exc
     with session.begin():
+        attach_active_model(session, f, False)
         rows = repo.search_events(session, f, after, limit + 1)
     items = rows[:limit]
     next_cursor = None
@@ -151,6 +174,12 @@ def detail(session: Session, event_id: int, event_time: datetime | None) -> dict
                 "asset_keys": {"src": event.src_asset_key, "dst": event.dst_asset_key},
             },
             "ground_truth": None,
+            # Model outputs are predictions, not observations; scores are uncalibrated.
+            "model_outputs": {
+                "classifications": classification.event_classifications(
+                    session, event.event_id, event.event_time
+                ),
+            },
         }
         if truth is not None:
             gt, code = truth
@@ -209,6 +238,7 @@ def timeseries(
     _choice(group_by, TIMESERIES_GROUPS, "group_by", required=False)
     validate_filters(f, settings.max_agg_days)
     with session.begin():
+        attach_active_model(session, f, group_by == "predicted_category")
         rows = repo.timeseries(session, f, interval, metric, group_by)
     buckets: dict[datetime, dict[str, float]] = {}
     if group_by:
@@ -241,6 +271,7 @@ def top_entities(
     _choice(dimension, TOP_DIMENSIONS, "dimension")
     validate_filters(f, settings.max_agg_days)
     with session.begin():
+        attach_active_model(session, f, False)
         rows = repo.top_entities(session, f, dimension, limit)
     return {
         "dimension": dimension,
@@ -256,6 +287,7 @@ def distribution(
     _choice(dimension, DISTRIBUTION_DIMENSIONS, "dimension")
     validate_filters(f, settings.max_agg_days)
     with session.begin():
+        attach_active_model(session, f, dimension == "predicted_category")
         rows = repo.distribution(session, f, dimension)
     return {
         "dimension": dimension,

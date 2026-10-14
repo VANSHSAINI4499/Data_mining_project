@@ -162,6 +162,110 @@ def cmd_generate_synthetic(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_train(args: argparse.Namespace) -> int:
+    from app.ml.classification.training import TrainingError
+    from app.services import classification
+
+    if args.task != "classifier":
+        print("error: anomaly training is added in Phase 4", file=sys.stderr)
+        return 2
+    config = classification.load_config_file(Path(args.config), args.batch_id or [])
+    factory = get_session_factory()
+    with factory() as session:
+        run = classification.start_training(session, CLI_ACTOR, config, enqueue=False)
+    try:
+        done = classification.run_training(
+            factory, get_settings(), run.run_id, lambda m: print(f"... {m}", file=sys.stderr)
+        )
+    except TrainingError as exc:
+        print(json.dumps({"run_id": str(run.run_id), "status": "failed", "error": str(exc)}))
+        return 1
+    rf = (done.metrics or {}).get("models", {}).get("random_forest", {}).get("test", {})
+    print(
+        json.dumps(
+            {
+                "run_id": str(done.run_id),
+                "status": done.status,
+                "test_macro_f1": rf.get("macro_f1"),
+                "test_weighted_f1": rf.get("weighted_f1"),
+                "leakage_warnings": (done.leakage_checks or {}).get("warnings", []),
+            }
+        )
+    )
+    return 0
+
+
+def cmd_score(args: argparse.Namespace) -> int:
+    from app.services import classification
+
+    if args.task != "classifier":
+        print("error: anomaly scoring is added in Phase 4", file=sys.stderr)
+        return 2
+    scope: dict[str, object] = {}
+    if args.batch_id:
+        scope["batch_ids"] = args.batch_id
+    if args.from_:
+        scope["from"] = args.from_
+    if args.to:
+        scope["to"] = args.to
+    factory = get_session_factory()
+    with factory() as session:
+        run = classification.start_scoring(session, CLI_ACTOR, scope, None, enqueue=False)
+    done = classification.run_scoring(factory, get_settings(), run.scoring_run_id)
+    print(
+        json.dumps(
+            {
+                "scoring_run_id": str(done.scoring_run_id),
+                "rows_scored": done.rows_scored,
+                "rows_skipped": done.rows_skipped,
+            }
+        )
+    )
+    return 0
+
+
+def cmd_models(args: argparse.Namespace) -> int:
+    import uuid as _uuid
+
+    from app.services import models as models_service
+
+    factory = get_session_factory()
+    with factory() as session:
+        if args.action == "list":
+            rows = models_service.list_models(session, None, None, None)
+            print(json.dumps(rows, default=str, indent=2))
+            return 0
+        if not args.model_id:
+            print("error: model_id is required", file=sys.stderr)
+            return 2
+        model_id = _uuid.UUID(args.model_id)
+        if args.action == "promote":
+            result = models_service.promote(session, CLI_ACTOR, model_id)
+        elif args.action == "archive":
+            result = models_service.archive(session, CLI_ACTOR, model_id)
+        else:
+            result = models_service.reject(
+                session, CLI_ACTOR, model_id, args.reason or "rejected via CLI"
+            )
+    print(json.dumps(result, default=str, indent=2))
+    return 0
+
+
+def cmd_artifacts_gc(args: argparse.Namespace) -> int:
+    import shutil
+
+    from app.services import models as models_service
+
+    with get_session_factory()() as session:
+        orphans = models_service.orphan_artifacts(session, get_settings())
+    for path in orphans:
+        print(("would remove " if args.dry_run else "removing ") + path)
+        if not args.dry_run:
+            shutil.rmtree(path)
+    print(f"{len(orphans)} orphan artifact directories")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cti", description="CTI Warehouse operator commands")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -196,6 +300,30 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--flows-per-hour", type=int, default=8)
     p.add_argument("--out", required=True)
     p.set_defaults(func=cmd_generate_synthetic)
+
+    p = sub.add_parser("train", help="train a model inline")
+    p.add_argument("task", choices=["classifier", "anomaly"])
+    p.add_argument("--config", default="config/ml/classifier_default.toml")
+    p.add_argument("--batch-id", action="append")
+    p.set_defaults(func=cmd_train)
+
+    p = sub.add_parser("score", help="score events with the active model (inline)")
+    p.add_argument("task", choices=["classifier", "anomaly"])
+    p.add_argument("--batch-id", action="append")
+    p.add_argument("--from", dest="from_")
+    p.add_argument("--to")
+    p.set_defaults(func=cmd_score)
+
+    p = sub.add_parser("models", help="model registry operations")
+    p.add_argument("action", choices=["list", "promote", "archive", "reject"])
+    p.add_argument("model_id", nargs="?")
+    p.add_argument("--reason")
+    p.set_defaults(func=cmd_models)
+
+    p = sub.add_parser("artifacts", help="artifact maintenance")
+    p.add_argument("action", choices=["gc"])
+    p.add_argument("--dry-run", action="store_true")
+    p.set_defaults(func=cmd_artifacts_gc)
 
     p = sub.add_parser("worker", help="run the background job worker")
     p.add_argument("--heartbeat-file", help="file touched every poll interval (health checks)")

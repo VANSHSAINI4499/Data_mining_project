@@ -49,9 +49,9 @@ The CLI uses the standard library `argparse`; configuration files use TOML read 
 | Library | Line | Why |
 |---|---|---|
 | PostgreSQL | 17 | Warehouse storage, partitioning, job queue. |
-| pandas | ≥ 2.2 | Dataset loading in adapters, feature frames. |
-| NumPy | ≥ 2.0 | Numerical arrays. |
-| scikit-learn | ≥ 1.5 | `Pipeline`, `ColumnTransformer`, `RandomForestClassifier`, `LogisticRegression`, `DummyClassifier`, `IsolationForest`, `StratifiedGroupKFold`, metrics. |
+| pandas | 3.0 (locked) | Feature frames for training and scoring (ingestion uses the standard library). |
+| NumPy | 2.5 (locked) | Numerical arrays. |
+| scikit-learn | 1.9 (locked) | `Pipeline`, `ColumnTransformer`, `RandomForestClassifier`, `LogisticRegression`, `DummyClassifier`, `IsolationForest`, `StratifiedGroupKFold`, metrics. |
 | joblib | (bundled dependency of scikit-learn) | Model artifact persistence. Pickle-based: load only trusted artifacts ([SECURITY_REQUIREMENTS.md](SECURITY_REQUIREMENTS.md#9-ml-artifact-safety)). |
 
 `skops` (a non-pickle persistence format for scikit-learn) is a **candidate alternative** — see open decisions in [docs/decisions/README.md](docs/decisions/README.md#open-decisions).

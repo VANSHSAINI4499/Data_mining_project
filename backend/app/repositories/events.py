@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.models import (
+    ClassificationResult,
     DimAttackCategory,
     DimSource,
     EventGroundTruth,
@@ -24,6 +25,8 @@ from app.models import (
 F = FactSecurityEvent
 GT = EventGroundTruth
 CAT = DimAttackCategory
+R = ClassificationResult
+PCAT = DimAttackCategory.__table__.alias("pred_cat")
 
 
 @dataclass
@@ -43,12 +46,46 @@ class EventFilters:
     signature_id: int | None = None
     ground_truth_categories: list[str] = field(default_factory=list)
     time_quality: str | None = None
+    # Prediction filters apply to one model (the active classifier, resolved by the service).
+    prediction_model_id: uuid.UUID | None = None
+    predicted_categories: list[str] = field(default_factory=list)
+    min_predicted_score: float | None = None
 
 
 def _gt_join(stmt: Any) -> Any:
     return stmt.outerjoin(
         GT, and_(GT.event_id == F.event_id, GT.event_time == F.event_time)
     ).outerjoin(CAT, CAT.attack_category_id == GT.attack_category_id)
+
+
+def _prediction_join(stmt: Any, f: EventFilters) -> Any:
+    """Outer-join the chosen model's prediction (at most one row per event and model)."""
+    if f.prediction_model_id is None:
+        return stmt
+    return stmt.outerjoin(
+        R,
+        and_(
+            R.event_id == F.event_id,
+            R.event_time == F.event_time,
+            R.model_id == f.prediction_model_id,
+        ),
+    ).outerjoin(PCAT, PCAT.c.attack_category_id == R.predicted_category_id)
+
+
+def _prediction_conditions(f: EventFilters) -> list[ColumnElement[bool]]:
+    conds: list[ColumnElement[bool]] = []
+    if f.predicted_categories:
+        conds.append(PCAT.c.code.in_(f.predicted_categories))
+    if f.min_predicted_score is not None:
+        conds.append(R.predicted_score >= f.min_predicted_score)
+    return conds
+
+
+def _all_conditions(f: EventFilters) -> list[ColumnElement[bool]]:
+    conds = [*_conditions(f), *_prediction_conditions(f)]
+    if f.ground_truth_categories:
+        conds.append(CAT.code.in_(f.ground_truth_categories))
+    return conds
 
 
 def _conditions(f: EventFilters) -> list[ColumnElement[bool]]:
@@ -104,10 +141,14 @@ SUMMARY_COLUMNS = (
 def search_events(
     session: Session, f: EventFilters, after: tuple[datetime, int] | None, limit: int
 ) -> list[dict[str, Any]]:
-    stmt = _gt_join(select(*SUMMARY_COLUMNS, CAT.code.label("ground_truth_category")))
-    stmt = stmt.where(*_conditions(f))
-    if f.ground_truth_categories:
-        stmt = stmt.where(CAT.code.in_(f.ground_truth_categories))
+    columns: list[Any] = [*SUMMARY_COLUMNS, CAT.code.label("ground_truth_category")]
+    if f.prediction_model_id is not None:
+        columns += [
+            PCAT.c.code.label("predicted_category"),
+            R.predicted_score.label("predicted_score"),
+        ]
+    stmt = _prediction_join(_gt_join(select(*columns)), f)
+    stmt = stmt.where(*_all_conditions(f))
     if after is not None:
         t, eid = after
         stmt = stmt.where(or_(F.event_time < t, and_(F.event_time == t, F.event_id < eid)))
@@ -156,15 +197,17 @@ def _group_column(name: str) -> Any:
         return func.coalesce(CAT.code, literal("(unlabelled)"))
     if name == "protocol":
         return func.coalesce(F.protocol, literal("(none)"))
+    if name == "predicted_category":
+        return func.coalesce(PCAT.c.code, literal("(not scored)"))
     raise ValueError(name)
 
 
-def _needs(stmt: Any, name: str | None) -> Any:
+def _needs(stmt: Any, name: str | None, f: EventFilters) -> Any:
     if name == "source":
         stmt = stmt.join(DimSource, DimSource.source_id == F.source_id)
-    if name == "ground_truth_category":
+    if name == "ground_truth_category" or f.ground_truth_categories:
         stmt = _gt_join(stmt)
-    return stmt
+    return _prediction_join(stmt, f)
 
 
 def timeseries(
@@ -180,16 +223,11 @@ def timeseries(
     ).label("value")
     if group_by:
         key = _group_column(group_by).label("key")
-        stmt = _needs(select(bucket, key, value).select_from(F), group_by)
-        stmt = stmt.where(*_conditions(f)).group_by(bucket, key).order_by(bucket)
+        stmt = _needs(select(bucket, key, value).select_from(F), group_by, f)
+        stmt = stmt.where(*_all_conditions(f)).group_by(bucket, key).order_by(bucket)
         return [(r.bucket, str(r.key), float(r.value)) for r in session.execute(stmt)]
-    stmt = (
-        select(bucket, value)
-        .select_from(F)
-        .where(*_conditions(f))
-        .group_by(bucket)
-        .order_by(bucket)
-    )
+    stmt = _needs(select(bucket, value).select_from(F), None, f)
+    stmt = stmt.where(*_all_conditions(f)).group_by(bucket).order_by(bucket)
     return [(r.bucket, None, float(r.value)) for r in session.execute(stmt)]
 
 
@@ -209,9 +247,8 @@ def top_entities(
     col = TOP_DIMENSIONS[dimension]
     n = func.count().label("n")
     stmt = (
-        select(col.label("value"), n)
-        .select_from(F)
-        .where(*_conditions(f), col.is_not(None))
+        _needs(select(col.label("value"), n).select_from(F), None, f)
+        .where(*_all_conditions(f), col.is_not(None))
         .group_by(col)
         .order_by(n.desc(), col)
         .limit(limit)
@@ -222,6 +259,6 @@ def top_entities(
 def distribution(session: Session, f: EventFilters, dimension: str) -> list[tuple[str, int]]:
     key = _group_column(dimension).label("key")
     n = func.count().label("n")
-    stmt = _needs(select(key, n).select_from(F), dimension)
-    stmt = stmt.where(*_conditions(f)).group_by(key).order_by(n.desc(), key)
+    stmt = _needs(select(key, n).select_from(F), dimension, f)
+    stmt = stmt.where(*_all_conditions(f)).group_by(key).order_by(n.desc(), key)
     return [(str(r.key), int(r.n)) for r in session.execute(stmt)]

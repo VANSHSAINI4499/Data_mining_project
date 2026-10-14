@@ -201,9 +201,9 @@ Public datasets are downloaded manually (UNSW-NB15: <https://research.unsw.edu.a
 | `cti ingest --source S [--adapter A] [--variant V] [--assume-event-date D] [--timezone TZ] [--date-order dmy\|mdy] [--dataset-partition training\|testing] PATH` | Import a file under `CTI_IMPORT_ROOT` (inline, no worker needed). Exit code 1 if the batch failed. | 2 |
 | *(not provided)* | Asset inventory import is API-only: `POST /api/v1/assets/import`. | 2 |
 | `cti generate-synthetic [--seed S] [--days D] [--flows-per-hour N] --out DIR` | Deterministic synthetic scenario: `events.jsonl`, `synthetic_indicators.csv`, `expected.json`. The committed sample is `data/samples/synthetic-seed42/`. | 2 |
-| `cti train classifier\|anomaly --config FILE [...]` | Train models. | 3/4 |
-| `cti score classifier\|anomaly [scope]` | Score events/windows. | 3/4 |
-| `cti models list\|promote\|archive\|reject` | Registry operations. | 3 |
+| `cti train classifier [--config FILE] --batch-id ID [--batch-id ID ...]` | Train inline; prints run id and test macro/weighted F1 and leakage warnings. Anomaly training: Phase 4. | 3 |
+| `cti score classifier (--batch-id ID ... \| --from T --to T)` | Score with the active model inline. Anomaly scoring: Phase 4. | 3 |
+| `cti models list\|promote\|archive\|reject [MODEL_ID] [--reason R]` | Registry operations (promotion applies the gate). | 3 |
 | `cti artifacts gc [--dry-run]` | Remove orphan artifact files. | 3 |
 | `cti attack-import PATH` | Load ATT&CK STIX bundle. | 5 |
 | `cti ti-import --feed F --format csv\|stix PATH` | Import indicators. | 5 |

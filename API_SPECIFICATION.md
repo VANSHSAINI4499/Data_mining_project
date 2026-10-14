@@ -299,4 +299,5 @@ In-process limits (single API process in the MVP; see [SECURITY_REQUIREMENTS.md]
 | §5.1–§5.3 health, auth, users, jobs | Implemented (Phase 1). |
 | §5.4 adapters & sources, §5.5 assets, §5.6 uploads & batches, §5.17 data quality | Implemented (Phase 2). Upload endpoints also return `411` without `Content-Length`; the limit is enforced before the multipart body is parsed. |
 | §5.7 events, §5.8 aggregations | Implemented (Phase 2) with the filters available so far (`predicted_category`, `min_predicted_score`, `has_indicator_match`, `has_alert` arrive with the phases that create that data and are rejected as unknown parameters until then). Event detail currently returns `observed`, `provenance`, and `ground_truth`; `model_outputs`, `threat_intel`, `alerts`, and `analyst` keys are added by later phases. |
-| §5.9 onwards | Later phases. |
+| §5.9 classification, §5.11 model registry | Implemented (Phase 3), plus `GET /classification/scoring-runs/{id}`. Training configs are validated strictly (unknown keys → 422). Promotion returns `409` with `gate_problems` when the gate is not met. Event search accepts `predicted_category` and `min_predicted_score` (active `attack_classifier`; 422 if none is active) and event detail includes `model_outputs.classifications`. |
+| §5.10 onwards | Later phases. |
