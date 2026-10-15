@@ -74,7 +74,7 @@ Thresholds are starting points, to be tuned with analyst feedback; tuning create
 - `dedup_key = "<rule_key>:<entity_type>:" + sha256(entity_value)[:16]`.
 - If an **open** alert (`new`, `acknowledged`, `in_review`) exists with the same `dedup_key`, new evidence is appended to it (`alert_evidence` PK prevents duplicates), `last_event_time`/`evidence_count` updated, risk recomputed, and an `updated` timeline/audit entry written. A partial unique index enforces one open alert per key.
 - If the previous alert is `dismissed`, `escalated`, or `closed`, a **new** alert is created and linked (`related_alert_id` in `risk_breakdown.context`), so analyst decisions are not silently reopened.
-- Evidence count per alert is capped at `CTI_ALERT_MAX_EVIDENCE` (default 10,000); beyond it, counts are still updated but individual rows are sampled (first/last N) and the cap is recorded.
+- Stored evidence per alert is capped at 10,000 rows (`MAX_EVIDENCE_PER_ALERT` in `app/services/correlation.py`; not configurable in the current build). Beyond the cap, `evidence_count` still counts every item, the first 10,000 stored rows are kept, and `risk_breakdown.evidence_cap.capped` records that the cap was reached.
 
 ## 6. Risk scoring
 

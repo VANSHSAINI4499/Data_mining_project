@@ -57,14 +57,15 @@ Implemented now (every one is listed in `.env.example`; a unit test enforces thi
 | `CTI_WORKER_POLL_SECONDS` | `2` | Idle polling interval of the worker. |
 | `VITE_API_BASE_URL` | `/api/v1` | Frontend API base (public; never a secret). |
 | `CTI_BACKEND_PROXY_TARGET` | `http://localhost:8000` | Vite dev-server proxy target for `/api`. |
+| `CTI_TI_RETROHUNT_DAYS` | `30` | Days of events re-matched after an indicator import changes indicators (`0` disables). |
+| `CTI_RETENTION_UPLOAD_DAYS` / `_REJECTED_DAYS` / `_JOB_SUCCEEDED_DAYS` / `_JOB_FAILED_DAYS` / `_SESSION_DAYS` / `_AUDIT_DAYS` | `30` / `90` / `90` / `180` / `7` / `365` | Retention periods used only by `cti retention apply` (audit ≥ 365). |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `cti` / `change-me` / `cti` | Used only by the optional Docker Compose stack. |
 
 Planned (added to `.env.example` when their phase is implemented):
 
 | Variable | Default | Phase |
 |---|---|---|
-| `CTI_ALERT_MAX_EVIDENCE`, `CTI_TI_*` ([THREAT_INTELLIGENCE.md §11](THREAT_INTELLIGENCE.md#11-configuration)) | — | 5 |
-| `CTI_RETENTION_*` ([DATABASE_DESIGN.md §9](DATABASE_DESIGN.md#9-retention)) | — | 7 |
+| `CTI_TI_HTTP_TIMEOUT_S`, `CTI_TI_MAX_RESPONSE_MB` ([THREAT_INTELLIGENCE.md §11](THREAT_INTELLIGENCE.md#11-configuration)) | — | 8 (TAXII) |
 | `CTI_DATASET_DIR` | unset | enables `dataset`-marked tests |
 
 ## 4. PostgreSQL (native)

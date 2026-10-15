@@ -135,8 +135,8 @@ Reference: MITRE ATT&CK — <https://attack.mitre.org/> (verified; v20 was the c
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `CTI_TI_DEFAULT_TTL_DAYS` | `90` | Effective expiry fallback. |
-| `CTI_TI_RETROHUNT_DAYS` | `30` | Look-back for automatic matching after import (0 = off). |
-| `CTI_TI_HTTP_TIMEOUT_S` | `30` | Outbound feed timeout. |
-| `CTI_TI_MAX_RESPONSE_MB` | `50` | Max feed response size. |
+| `CTI_TI_RETROHUNT_DAYS` | `30` | Look-back for automatic matching after import (0 = off). Implemented. |
+| *(per feed)* `default_ttl_days` | `90` | Effective expiry fallback; a feed setting (`PATCH /threat-intel/feeds/{id}`), not an environment variable. |
+| `CTI_TI_HTTP_TIMEOUT_S` | `30` | Outbound feed timeout — planned with TAXII polling (Phase 8). |
+| `CTI_TI_MAX_RESPONSE_MB` | `50` | Max feed response size — planned with TAXII polling (Phase 8). |
 | `<feed credentials_ref>` | — | e.g., `CTI_FEED_EXAMPLE_TOKEN`; only needed for authenticated optional feeds. |
