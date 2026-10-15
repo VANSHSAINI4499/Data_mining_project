@@ -170,6 +170,7 @@ Run from the repository root. All commands below run inline (no worker needed); 
 uv run --project backend cti seed-reference
 uv run --project backend cti generate-synthetic --scenario full --seed 42 --out data/samples/generated
 uv run --project backend cti ingest --source synthetic --adapter canonical_jsonl data/samples/generated/events.jsonl
+uv run --project backend cti ingest --source web-server data/samples/web-access/access_sample.log   # Nginx/Apache access log
 uv run --project backend cti ingest --source unsw-nb15 --adapter unsw_nb15 --variant partition \
   --assume-event-date 2015-01-22 data/external/unsw-nb15/UNSW_NB15_training-set.csv
 uv run --project backend cti train classifier --config config/ml/classifier_default.toml --batch-id <uuid>

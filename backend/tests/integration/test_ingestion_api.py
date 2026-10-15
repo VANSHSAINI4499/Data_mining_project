@@ -318,6 +318,7 @@ def test_sources_and_adapters(login: Callable[..., LoggedIn], seeded: Session) -
         "endpoint_jsonl",
         "cicids2017",
         "unsw_nb15",
+        "nginx_access",
     }
     created = c.post(
         "/api/v1/sources",

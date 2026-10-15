@@ -32,3 +32,11 @@ default_adapter = "unsw_nb15"
 default_timezone = "UTC"
 reliability = "F"
 description = "UNSW Canberra UNSW-NB15 dataset (download manually). Raw-record timestamps are epoch seconds."
+
+[[source]]
+source_key = "web-server"
+name = "Web server access logs"
+source_type = "other"
+default_adapter = "nginx_access"
+reliability = "C"
+description = "Nginx/Apache access logs in combined or common format. Timestamps carry their own UTC offset; URLs are stored, never fetched."

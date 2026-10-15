@@ -71,6 +71,7 @@ class Adapter(Protocol):
 | `suricata_eve` | Suricata EVE JSON lines | `ids_alert`, `network_flow`, `dns`, `http`, `other` | none | MVP |
 | `auth_jsonl` | Authentication events, documented schema below | `auth` | optional `label_raw` | MVP |
 | `endpoint_jsonl` | Endpoint events, documented schema below | `endpoint_process`, `endpoint_file`, `endpoint_network` | optional `label_raw` | MVP |
+| `nginx_access` | Nginx/Apache access log, `combined` or `common` format | `http` | none | Extension |
 | `asset_inventory_csv` | Asset list → `dim_asset` (not events) | — | — | MVP |
 | TI feeds (`ti_csv`, `stix21_bundle`) | Indicators → `ti_indicator` | — | — | Phase 5, [THREAT_INTELLIGENCE.md](THREAT_INTELLIGENCE.md#5-ingestion-and-normalization) |
 | `linux_auth_syslog`, Windows event exports | — | — | — | **Future** |
@@ -139,6 +140,17 @@ Required: `timestamp`, `user_name`, `auth_result` (`success`|`failure`). Optiona
 ### 4.7 `endpoint_jsonl`
 
 Required: `timestamp`, `host_name`, `event_action` (`process_start` → `endpoint_process`, `file_create`/`file_modify` → `endpoint_file`, `network_connect` → `endpoint_network`). Optional: `user_name`, `process_name`, `process_command_line`, `parent_process_name`, `file_path`, `file_sha256`, `dst_ip`, `dst_port`, `label_raw`. Command lines and paths are stored as inert text ([SECURITY_REQUIREMENTS.md](SECURITY_REQUIREMENTS.md#5-safe-handling-of-untrusted-logs-and-indicators)).
+
+### 4.9 `nginx_access`
+
+One request per line in the Nginx/Apache **combined** format (`$remote_addr - $remote_user [$time_local] "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent"`) or the **common** format (without referer and user agent). The format is detected per line; `variant=combined|common` makes the batch accept only that format. Extra trailing fields (for example `$http_x_forwarded_for`) are kept as `attributes.extra_fields`.
+
+- Mapping: `remote_addr` → `src_ip`, `remote_user` → `user_name` (`-` → null), `time_local` → `event_time` (parsed without locale; its own UTC offset is kept, so no source timezone is needed), request target → `url`, `body_bytes_sent` → `bytes_in`, `event_type = http`, `app_protocol = http`.
+- Attributes: `method`, `protocol`, `status`, `referer`, `user_agent`, `request_line`, `log_format`, and `query_params` — decoded `[name, value]` pairs (URL-decoded, `+` → space; at most 50 pairs of ≤ 2,048 characters). A request line that is not `METHOD target [HTTP/x]` (e.g. raw TLS bytes sent to a plain-HTTP port) is kept with `request_unparsed = true` and no URL.
+- Dedup: fingerprint = event time + client IP + line hash + occurrence index of that identical line within the file, so two identical requests in the same second are both kept, while re-importing overlapping log files deduplicates.
+- Rejections: lines that do not match either format (`INVALID_VALUE`), bad timestamps (`INVALID_TIMESTAMP`), oversized or non-UTF-8 lines.
+- Not provided: the `Host` header (not in these formats), response time, upstream fields. URLs are never fetched or followed.
+- Sample: `data/samples/web-access/access_sample.log` (synthetic, documentation IP ranges). The default source `web-server` uses this adapter.
 
 ### 4.8 `asset_inventory_csv`
 

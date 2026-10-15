@@ -37,7 +37,7 @@ EXPECTED_CODES = {
 
 def test_seed_creates_taxonomy_and_sources(db: Session) -> None:
     result = seed_reference(db, CLI_ACTOR)
-    assert result.categories_created == 16 and result.sources_created == 3
+    assert result.categories_created == 16 and result.sources_created == 4
     codes = set(db.scalars(select(DimAttackCategory.code)))
     assert codes == EXPECTED_CODES
     benign = db.scalar(select(DimAttackCategory).where(DimAttackCategory.code == "BENIGN"))
@@ -55,7 +55,7 @@ def test_seed_is_idempotent_and_preserves_user_edits(db: Session) -> None:
         src.default_timezone = "America/Halifax"
     again = seed_reference(db, CLI_ACTOR)
     assert (again.categories_created, again.categories_updated) == (0, 0)
-    assert (again.sources_created, again.sources_existing) == (0, 3)
+    assert (again.sources_created, again.sources_existing) == (0, 4)
     assert db.scalar(select(func.count()).select_from(DimAttackCategory)) == 16
     src = db.scalar(select(DimSource).where(DimSource.source_key == "cicids2017"))
     assert src is not None and src.default_timezone == "America/Halifax"
