@@ -50,6 +50,9 @@ from app.services.actors import CLI_ACTOR  # noqa: E402
 
 BACKEND_DIR = REPO_ROOT / "backend"
 APP_TABLES = (
+    "processing_watermark",
+    "drift_report",
+    "pattern_mining_run",
     "event_ground_truth",
     "fact_security_event",
     "data_quality_result",

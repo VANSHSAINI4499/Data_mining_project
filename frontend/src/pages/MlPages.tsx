@@ -8,6 +8,7 @@ import { DataTable } from "../components/DataTable";
 import { JobProgress } from "../components/JobProgress";
 import { EmptyState, ErrorState, LoadingSkeleton } from "../components/States";
 import {
+  Badge,
   Button,
   Card,
   CodeBlockText,
@@ -17,6 +18,7 @@ import {
   MutationError,
   Notice,
   PageHeader,
+  SafeText,
   StatusBadge,
   TimeRangePicker,
 } from "../components/ui";
@@ -402,6 +404,113 @@ interface ModelRow {
   promoted_at: string | null;
   status_note: string | null;
   metrics_summary: Record<string, unknown>;
+  latest_drift: { status: string; warnings: number; created_at: string } | null;
+}
+
+interface DriftReportRow {
+  report_id: string;
+  period_start: string;
+  period_end: string;
+  status: string;
+  metrics: Record<string, unknown>;
+  warnings: string[];
+  created_at: string;
+  note: string;
+}
+
+const DRIFT_TONE: Record<string, string> = {
+  ok: "ok",
+  warning: "warn",
+  insufficient_data: "muted",
+};
+
+function DriftBadge({ drift }: { drift: ModelRow["latest_drift"] }) {
+  if (!drift) return <span className="text-muted">not checked</span>;
+  return (
+    <Badge tone={DRIFT_TONE[drift.status] ?? "muted"}>
+      {drift.status.replace("_", " ")}
+      {drift.warnings ? ` (${drift.warnings})` : ""}
+    </Badge>
+  );
+}
+
+function DriftPanel({ modelId, canRun }: { modelId: string; canRun: boolean }) {
+  const reports = useApi<DriftReportRow[]>(`/models/${modelId}/drift-reports`);
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const start = useApiMutation<Record<string, string>, { job_id: string }>(
+    "POST",
+    `/models/${modelId}/drift-reports`,
+    [`/models/${modelId}`],
+  );
+  return (
+    <Card title="Drift reports">
+      <Notice>
+        Drift checks are informational. They never retrain, re-threshold, or promote a model.
+      </Notice>
+      {canRun && (
+        <div className="mt-3 flex flex-wrap items-end gap-2">
+          <Field label="Check period from (UTC)">
+            <input
+              type="datetime-local"
+              className={inputClass}
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+            />
+          </Field>
+          <Field label="to (UTC)">
+            <input
+              type="datetime-local"
+              className={inputClass}
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+            />
+          </Field>
+          <Button
+            disabled={!from || !to || start.isPending}
+            onClick={() => start.mutate({ from: `${from}:00Z`, to: `${to}:00Z` })}
+          >
+            Run drift check
+          </Button>
+        </div>
+      )}
+      <MutationError error={start.error} />
+      {start.data && <JobProgress jobId={start.data.job_id} />}
+      <div className="mt-3">
+        <DataTable
+          rows={reports.data}
+          rowKey={(r) => r.report_id}
+          isPending={reports.isPending}
+          error={reports.error}
+          emptyTitle="No drift reports yet"
+          columns={[
+            {
+              key: "p",
+              header: "Period (UTC)",
+              render: (r) => `${formatTime(r.period_start)} – ${formatTime(r.period_end)}`,
+            },
+            {
+              key: "s",
+              header: "Status",
+              render: (r) => (
+                <Badge tone={DRIFT_TONE[r.status] ?? "muted"}>{r.status.replace("_", " ")}</Badge>
+              ),
+            },
+            {
+              key: "w",
+              header: "Warnings",
+              render: (r) => (r.warnings.length ? r.warnings.join("; ") : "none"),
+            },
+            {
+              key: "m",
+              header: "Metrics",
+              render: (r) => <SafeText value={JSON.stringify(r.metrics)} max={120} />,
+            },
+          ]}
+        />
+      </div>
+    </Card>
+  );
 }
 
 interface ModelDetail extends ModelRow {
@@ -445,6 +554,7 @@ export function ModelsPage() {
             },
             { key: "created", header: "Created", render: (m) => formatTime(m.created_at) },
             { key: "promoted", header: "Promoted", render: (m) => formatTime(m.promoted_at) },
+            { key: "drift", header: "Drift", render: (m) => <DriftBadge drift={m.latest_drift} /> },
           ]}
         />
       </Card>
@@ -553,6 +663,7 @@ export function ModelDetailPage() {
           ]}
         />
       </Card>
+      <DriftPanel modelId={m.model_id} canRun={hasRole(session.data?.user, "analyst")} />
       <Card title="Metrics summary">
         <CodeBlockText value={m.metrics_summary} />
       </Card>

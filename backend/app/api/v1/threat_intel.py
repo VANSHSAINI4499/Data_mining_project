@@ -95,8 +95,16 @@ def update_feed(
 
 @router.post("/threat-intel/feeds/{feed_id}/sync", status_code=status.HTTP_202_ACCEPTED)
 def sync_feed(feed_id: uuid.UUID, principal: Admin, session: DbSession) -> dict[str, Any]:
-    threat_intel.sync_feed(session, principal.actor, feed_id)
-    return {}  # pragma: no cover - sync_feed always raises until TAXII polling exists
+    run = threat_intel.sync_feed(session, principal.actor, feed_id)
+    return {
+        "id": str(run.feed_run_id),
+        "job_id": str(run.job_id),
+        "status": run.status,
+        "links": {
+            "import": f"{API_PREFIX}/threat-intel/imports/{run.feed_run_id}",
+            "job": f"{API_PREFIX}/jobs/{run.job_id}",
+        },
+    }
 
 
 @router.post("/threat-intel/imports", status_code=status.HTTP_202_ACCEPTED)

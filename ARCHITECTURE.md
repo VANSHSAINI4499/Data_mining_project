@@ -213,7 +213,7 @@ Rules (enforced in review; see [DEVELOPMENT_RULES.md](DEVELOPMENT_RULES.md#3-arc
 ## 9. Batch and incremental processing
 
 - **Batch (MVP):** each ingestion batch is processed end-to-end; scoring, matching, and correlation jobs run on a selected scope (batch IDs or time range).
-- **Incremental (designed now, completed in Phase 8):** each downstream job records a **watermark** (`max(ingested_at)` or last `event_id` processed) in `processing_watermark`. Subsequent runs process only events beyond the watermark. Correlation re-evaluates a trailing look-back window equal to the largest rule window to catch late-arriving evidence.
+- **Incremental (implemented in Phase 8, `cti process --incremental`, `cti watch --process`):** each downstream job records a **watermark** (`max(ingested_at)` or last `event_id` processed) in `processing_watermark`. Subsequent runs process only events beyond the watermark. Correlation re-evaluates a trailing look-back window equal to the largest rule window to catch late-arriving evidence.
 - Late or out-of-order events are accepted; `event_time` and `ingested_at` are stored separately.
 
 ## 10. Scalability path (future — only with a demonstrated requirement)

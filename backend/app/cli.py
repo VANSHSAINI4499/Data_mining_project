@@ -423,6 +423,95 @@ def cmd_retention(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_process(args: argparse.Namespace) -> int:
+    from app.services import incremental
+
+    factory = get_session_factory()
+    if args.consumer:
+        results = [incremental.run_consumer(factory, get_settings(), CLI_ACTOR, args.consumer)]
+    else:
+        results = incremental.run_all(factory, get_settings(), CLI_ACTOR)
+    print(json.dumps(results, default=str, indent=2))
+    return 0
+
+
+def cmd_watermarks(args: argparse.Namespace) -> int:
+    from app.services import incremental
+
+    with get_session_factory()() as session:
+        print(json.dumps(incremental.watermarks(session), default=str, indent=2))
+    return 0
+
+
+def cmd_watch(args: argparse.Namespace) -> int:
+    from app.services import inbox, incremental
+
+    settings = get_settings()
+    factory = get_session_factory()
+    stop = threading.Event()
+
+    def _stop(signum: int, frame: FrameType | None) -> None:
+        stop.set()
+
+    signal.signal(signal.SIGINT, _stop)
+    signal.signal(signal.SIGTERM, _stop)
+    while not stop.is_set():
+        results = inbox.poll_once(
+            factory,
+            settings,
+            CLI_ACTOR,
+            Path(args.inbox),
+            source_key=args.source,
+            adapter=args.adapter,
+        )
+        for item in results:
+            print(json.dumps(item.__dict__, default=str), flush=True)
+        if results and args.process:
+            for summary in incremental.run_all(factory, settings, CLI_ACTOR):
+                print(json.dumps(summary, default=str), flush=True)
+        if args.once:
+            break
+        stop.wait(args.interval)
+    return 0
+
+
+def cmd_drift(args: argparse.Namespace) -> int:
+    import uuid
+
+    from app.services import drift
+
+    report = drift.compute(
+        get_session_factory(),
+        get_settings(),
+        CLI_ACTOR,
+        uuid.UUID(args.model_id),
+        _aware(args.from_, "from"),
+        _aware(args.to, "to"),
+    )
+    print(json.dumps(drift.report_out(report), default=str, indent=2))
+    return 0
+
+
+def cmd_mine_patterns(args: argparse.Namespace) -> int:
+    from app.services import patterns
+
+    params = patterns.parse(
+        {
+            "entity_type": args.entity_type,
+            "start": _aware(args.from_, "from"),
+            "end": _aware(args.to, "to"),
+            "min_support": args.min_support,
+            "max_length": args.max_length,
+            "max_gap_minutes": args.max_gap_minutes,
+            "min_malicious_ratio": args.min_malicious_ratio,
+        }
+    )
+    with get_session_factory()() as session:
+        record = patterns.run(session, CLI_ACTOR, params)
+    print(json.dumps(patterns.out(record), default=str, indent=2))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cti", description="CTI Warehouse operator commands")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -514,6 +603,51 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--dry-run", action="store_true", help="count only; change nothing")
     p.add_argument("--execute", action="store_true", help="delete per policy")
     p.set_defaults(func=cmd_retention)
+
+    p = sub.add_parser("process", help="incremental matching, scoring, and correlation")
+    p.add_argument(
+        "--incremental",
+        action="store_true",
+        required=True,
+        help="process only batches completed since each consumer's watermark",
+    )
+    p.add_argument(
+        "--consumer",
+        choices=["indicator_matching", "classifier_scoring", "anomaly_scoring", "correlation"],
+    )
+    p.set_defaults(func=cmd_process)
+
+    p = sub.add_parser("watermarks", help="show incremental-processing watermarks")
+    p.set_defaults(func=cmd_watermarks)
+
+    p = sub.add_parser("watch", help="import files dropped into an inbox folder")
+    p.add_argument("--inbox", required=True, help="folder inside CTI_IMPORT_ROOT")
+    p.add_argument("--source", required=True)
+    p.add_argument("--adapter")
+    p.add_argument("--interval", type=float, default=10.0, help="seconds between polls")
+    p.add_argument("--once", action="store_true", help="poll once, then exit")
+    p.add_argument(
+        "--process",
+        action="store_true",
+        help="run incremental processing after new files are imported",
+    )
+    p.set_defaults(func=cmd_watch)
+
+    p = sub.add_parser("drift", help="compute a drift report for a model (informational)")
+    p.add_argument("model_id")
+    p.add_argument("--from", dest="from_", required=True)
+    p.add_argument("--to", required=True)
+    p.set_defaults(func=cmd_drift)
+
+    p = sub.add_parser("mine-patterns", help="mine candidate sequence rules (human review)")
+    p.add_argument("--entity-type", required=True, choices=["account", "src_ip", "dst_ip", "host"])
+    p.add_argument("--from", dest="from_", required=True)
+    p.add_argument("--to", required=True)
+    p.add_argument("--min-support", type=int, default=2)
+    p.add_argument("--max-length", type=int, default=3)
+    p.add_argument("--max-gap-minutes", type=int, default=30)
+    p.add_argument("--min-malicious-ratio", type=float, default=0.5)
+    p.set_defaults(func=cmd_mine_patterns)
 
     p = sub.add_parser("worker", help="run the background job worker")
     p.add_argument("--heartbeat-file", help="file touched every poll interval (health checks)")

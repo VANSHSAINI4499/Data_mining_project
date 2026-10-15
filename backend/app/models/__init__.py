@@ -1,5 +1,6 @@
 """ORM models. Importing this package registers every table on ``Base.metadata``."""
 
+from app.models.analytics import DriftReport, PatternMiningRun, ProcessingWatermark
 from app.models.base import Base
 from app.models.investigation import (
     Alert,
@@ -57,6 +58,7 @@ __all__ = [
     "DimAttackCategory",
     "DimDate",
     "DimSource",
+    "DriftReport",
     "EventGroundTruth",
     "FactSecurityEvent",
     "IncidentCase",
@@ -66,6 +68,8 @@ __all__ = [
     "MlModel",
     "MlScoringRun",
     "MlTrainingRun",
+    "PatternMiningRun",
+    "ProcessingWatermark",
     "RawRecord",
     "RejectedRecord",
     "TiFeed",

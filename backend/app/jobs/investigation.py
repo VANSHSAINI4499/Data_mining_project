@@ -8,7 +8,7 @@ from typing import Any
 
 from app.core.config import get_settings
 from app.jobs.runtime import JobContext
-from app.services import correlation, threat_intel
+from app.services import correlation, patterns, threat_intel
 from app.services.actors import SYSTEM_ACTOR
 
 
@@ -38,3 +38,18 @@ def run_correlation(ctx: JobContext) -> dict[str, Any]:
             datetime.fromisoformat(ctx.params["to"]),
             ctx.params.get("rule_keys") or None,
         )
+
+
+def run_mine_patterns(ctx: JobContext) -> dict[str, Any]:
+    return patterns.run_job(ctx.session_factory, SYSTEM_ACTOR, ctx.params)
+
+
+def run_ti_sync(ctx: JobContext) -> dict[str, Any]:
+    run = threat_intel.run_sync(ctx.session_factory, uuid.UUID(str(ctx.params["feed_run_id"])))
+    return {
+        "feed_run_id": str(run.feed_run_id),
+        "status": run.status,
+        "indicators_created": run.indicators_created,
+        "indicators_updated": run.indicators_updated,
+        "pages": run.report.get("pages"),
+    }

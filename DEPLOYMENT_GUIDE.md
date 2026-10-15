@@ -65,7 +65,6 @@ Planned (added to `.env.example` when their phase is implemented):
 
 | Variable | Default | Phase |
 |---|---|---|
-| `CTI_TI_HTTP_TIMEOUT_S`, `CTI_TI_MAX_RESPONSE_MB` ([THREAT_INTELLIGENCE.md §11](THREAT_INTELLIGENCE.md#11-configuration)) | — | 8 (TAXII) |
 | `CTI_DATASET_DIR` | unset | enables `dataset`-marked tests |
 
 ## 4. PostgreSQL (native)
@@ -214,4 +213,8 @@ Public datasets are downloaded manually (UNSW-NB15: <https://research.unsw.edu.a
 | `cti match-indicators (--batch-id ID ... \| --from T --to T) [--include-expired]` | Exact indicator matching against stored events (idempotent). | 5 |
 | `cti correlate --from T --to T [--rule K ...]` | Run enabled correlation rules; prints per-rule evidence counts, matches, and alerts created/updated. | 5 |
 | `cti retention apply (--dry-run \| --execute)` | Apply the retention policy in [DATABASE_DESIGN.md §9](DATABASE_DESIGN.md#9-retention) (`CTI_RETENTION_*` settings): uploaded files under `CTI_UPLOAD_DIR`, rejected records, unreferenced finished jobs, expired sessions, audit records older than `CTI_RETENTION_AUDIT_DAYS` (≥ 365). Events and raw records are never deleted. Both modes print counts and are audited. | 7 |
-| `cti watch` | Inbox-folder incremental ingestion. | 8 |
+| `cti watch --inbox DIR --source S [--adapter A] [--interval N] [--once] [--process]` | Import files dropped into an inbox folder inside `CTI_IMPORT_ROOT` once; files move to `processed/` or `failed/`. `--process` runs incremental processing after new imports. | 8 |
+| `cti process --incremental [--consumer C]` | Indicator matching, classifier scoring, anomaly scoring, and correlation for batches completed since each consumer's watermark. | 8 |
+| `cti watermarks` | Show incremental-processing watermarks. | 8 |
+| `cti drift MODEL_ID --from T --to T` | Informational drift report (PSI, flagged-rate, prediction shift); never retrains. | 8 |
+| `cti mine-patterns --entity-type E --from T --to T [--min-support N] [--max-length L] [--max-gap-minutes M] [--min-malicious-ratio R]` | Mine candidate sequence rules for human review (never enabled automatically). | 8 |

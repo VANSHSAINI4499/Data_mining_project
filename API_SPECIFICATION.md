@@ -192,7 +192,7 @@ There is **no** endpoint to upload model artifacts.
 | GET | `/threat-intel/feeds` | viewer | Feeds with health. |
 | POST | `/threat-intel/feeds` | admin | Create feed (`credentials_ref` is an env var **name**). |
 | PATCH | `/threat-intel/feeds/{feed_id}` | admin | Update / enable / disable. |
-| POST | `/threat-intel/feeds/{feed_id}/sync` | admin | Planned → 202 job. **Current build:** TAXII polling is not implemented, so this returns 409 with a pointer to file imports (deferred to Phase 8). |
+| POST | `/threat-intel/feeds/{feed_id}/sync` | admin | TAXII feeds → 202 job `ti.sync` (implemented in Phase 8). 409 for non-TAXII feeds, missing URL/collection/credential variable, disabled feeds, or a sync running / started < 5 min ago. |
 | POST | `/threat-intel/imports` | admin | Upload CSV or STIX 2.1 bundle `{file, feed_id, format}` → 202 job. |
 | GET | `/threat-intel/imports/{feed_run_id}` | viewer | Import run status and report: counts received/created/updated/rejected, rejected rows, unsupported STIX patterns. |
 | GET | `/threat-intel/indicators` | viewer | Filters `indicator_type`, `feed_id`, `state` (`active`/`expired`/`revoked`), `min_confidence`, `value` (exact normalised). Values returned raw and `display_value` defanged. |
@@ -302,8 +302,9 @@ In-process limits (single API process in the MVP; see [SECURITY_REQUIREMENTS.md]
 | §5.7 events, §5.8 aggregations | Implemented (Phase 2) with the filters available so far (`predicted_category`, `min_predicted_score`, `has_indicator_match`, `has_alert` arrive with the phases that create that data and are rejected as unknown parameters until then). Event detail returns `observed`, `provenance`, `ground_truth`, `model_outputs`, `threat_intel`, `alerts`, and `analyst` as separate sections. |
 | §5.9 classification, §5.11 model registry | Implemented (Phase 3), plus `GET /classification/scoring-runs/{id}`. Training configs are validated strictly (unknown keys → 422). Promotion returns `409` with `gate_problems` when the gate is not met. Event search accepts `predicted_category` and `min_predicted_score` (active `attack_classifier`; 422 if none is active) and event detail includes `model_outputs.classifications`. |
 | §5.10 anomaly detection | Implemented (Phase 4). `GET /anomalies` defaults to `is_flagged=true` and is ordered by score; every result carries `score_is_probability: false` and an interpretation note. Detail includes features, baseline, deviations, history, seasonal comparison, and a ready-made `linked_events` query. |
-| §5.12 threat intelligence & ATT&CK | Implemented (Phase 5) except TAXII polling: `POST /threat-intel/feeds/{id}/sync` returns `409` (deferred to Phase 8). `GET /threat-intel/imports/{id}` added for import reports. |
+| §5.12 threat intelligence & ATT&CK | Implemented (Phase 5); TAXII polling added in Phase 8. `GET /threat-intel/imports/{id}` added for import reports. |
 | §5.13 correlation, §5.14 alerts & cases, §5.15 feedback | Implemented (Phase 5). Alert evidence items carry the `event_id` they derive from (for classification results and indicator matches as well as events). |
 | §5.16 dashboard | Implemented (Phase 6): `GET /dashboard/overview?from&to`. |
+| Phase 8 additions | `POST/GET /models/{id}/drift-reports` (analyst / viewer; job `ml.drift`), `POST /correlation/pattern-runs`, `GET /correlation/pattern-runs[/{id}]` (analyst / viewer; job `correlation.mine_patterns`), `POST /threat-intel/feeds/{id}/sync` now queues a TAXII poll (job `ti.sync`, 409 for non-TAXII, unconfigured, disabled, or too-frequent syncs). Model list/detail include `latest_drift`. |
 | §5.18 audit records | Implemented (Phase 7). `action` accepts an exact action or a prefix ending in `.` (e.g. `alert.`); responses include `known_actions` for filter lists. |
 | §8 rate limiting | Implemented (Phase 7): 429 problem responses with `Retry-After`; limits are per session (per IP when anonymous; per IP + username for login). |

@@ -384,7 +384,7 @@ def test_stix_import_reports_unsupported_patterns(
     sync = admin.client.post(
         f"/api/v1/threat-intel/feeds/{_local_feed(db)}/sync", headers=admin.headers()
     )
-    assert sync.status_code == 409 and "Phase 8" in sync.json()["detail"]
+    assert sync.status_code == 409 and "only TAXII feeds" in sync.json()["detail"]
 
 
 @pytest.fixture

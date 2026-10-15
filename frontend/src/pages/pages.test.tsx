@@ -290,6 +290,20 @@ describe("models and classification", () => {
           manifest: {},
         }),
       ),
+      http.get(`${API}/models/${id}/drift-reports`, () =>
+        HttpResponse.json([
+          {
+            report_id: "r1",
+            period_start: "2026-01-06T00:00:00Z",
+            period_end: "2026-01-11T00:00:00Z",
+            status: "warning",
+            metrics: { predicted_category_psi: 2.09 },
+            warnings: ["predicted_category_psi = 2.091 >= 0.25"],
+            created_at: "2026-10-15T00:00:00Z",
+            note: "informational",
+          },
+        ]),
+      ),
       http.post(`${API}/models/${id}/promote`, () =>
         problemResponse(problem(409, "Conflict", "promotion gate not met")),
       ),
@@ -300,6 +314,10 @@ describe("models and classification", () => {
     await user.click(screen.getByRole("button", { name: "Promote" }));
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Confirm" }));
     expect(await screen.findByText("promotion gate not met")).toBeInTheDocument();
+    expect(screen.getByText("predicted_category_psi = 2.091 >= 0.25")).toBeInTheDocument();
+    expect(
+      screen.getByText(/They never retrain, re-threshold, or promote a model/),
+    ).toBeInTheDocument();
   });
 
   it("treats a missing active classifier as an empty state", async () => {

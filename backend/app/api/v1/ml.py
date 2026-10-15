@@ -14,7 +14,7 @@ from app.api.v1.router_prefix import API_PREFIX
 from app.core.db import DbSession
 from app.core.pagination import DEFAULT_LIMIT, MAX_LIMIT
 from app.schemas.common import RequestModel
-from app.services import classification
+from app.services import classification, drift
 from app.services import models as models_service
 
 router = APIRouter(tags=["ml"])
@@ -241,3 +241,27 @@ def reject(
     model_id: uuid.UUID, body: RejectBody, principal: Admin, session: DbSession
 ) -> dict[str, Any]:
     return models_service.reject(session, principal.actor, model_id, body.reason)
+
+
+class DriftBody(RequestModel):
+    from_: datetime = Field(alias="from")
+    to: datetime
+
+
+@router.post("/models/{model_id}/drift-reports", status_code=status.HTTP_202_ACCEPTED)
+def start_drift_report(
+    model_id: uuid.UUID, body: DriftBody, principal: Analyst, session: DbSession
+) -> dict[str, Any]:
+    job_id = drift.start(session, principal.actor, model_id, body.from_, body.to)
+    return {
+        "job_id": str(job_id),
+        "status": "queued",
+        "links": {"job": f"{API_PREFIX}/jobs/{job_id}"},
+    }
+
+
+@router.get("/models/{model_id}/drift-reports")
+def list_drift_reports(
+    model_id: uuid.UUID, principal: Viewer, session: DbSession
+) -> list[dict[str, Any]]:
+    return drift.list_reports(session, model_id)

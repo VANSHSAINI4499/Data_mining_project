@@ -1,13 +1,15 @@
-"""ML jobs: classifier training and scoring (anomaly jobs are added in Phase 4)."""
+"""ML jobs: classifier training and scoring, and drift reports (anomaly jobs: anomaly.py)."""
 
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Any
 
 from app.core.config import get_settings
 from app.jobs.runtime import JobContext
-from app.services import classification
+from app.services import classification, drift
+from app.services.actors import SYSTEM_ACTOR
 
 
 def run_train_classifier(ctx: JobContext) -> dict[str, Any]:
@@ -32,4 +34,20 @@ def run_score_classifier(ctx: JobContext) -> dict[str, Any]:
         "scoring_run_id": str(run.scoring_run_id),
         "rows_scored": run.rows_scored,
         "rows_skipped": run.rows_skipped,
+    }
+
+
+def run_drift(ctx: JobContext) -> dict[str, Any]:
+    report = drift.compute(
+        ctx.session_factory,
+        get_settings(),
+        SYSTEM_ACTOR,
+        uuid.UUID(str(ctx.params["model_id"])),
+        datetime.fromisoformat(ctx.params["from"]),
+        datetime.fromisoformat(ctx.params["to"]),
+    )
+    return {
+        "report_id": str(report.report_id),
+        "status": report.status,
+        "warnings": len(report.warnings),
     }

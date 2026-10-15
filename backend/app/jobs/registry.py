@@ -5,8 +5,14 @@ from __future__ import annotations
 from app.jobs.anomaly import run_score_anomaly, run_train_anomaly
 from app.jobs.diagnostic import run_diagnostic
 from app.jobs.ingestion import run_ingestion
-from app.jobs.investigation import run_correlation, run_ti_import, run_ti_match
-from app.jobs.ml import run_score_classifier, run_train_classifier
+from app.jobs.investigation import (
+    run_correlation,
+    run_mine_patterns,
+    run_ti_import,
+    run_ti_match,
+    run_ti_sync,
+)
+from app.jobs.ml import run_drift, run_score_classifier, run_train_classifier
 from app.jobs.runtime import JobHandler
 
 HANDLERS: dict[str, JobHandler] = {
@@ -16,7 +22,10 @@ HANDLERS: dict[str, JobHandler] = {
     "ml.score_classifier": run_score_classifier,
     "ml.train_anomaly": run_train_anomaly,
     "ml.score_anomaly": run_score_anomaly,
+    "ml.drift": run_drift,
     "ti.import": run_ti_import,
     "ti.match": run_ti_match,
+    "ti.sync": run_ti_sync,
     "correlation.run": run_correlation,
+    "correlation.mine_patterns": run_mine_patterns,
 }

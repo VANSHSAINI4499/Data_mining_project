@@ -88,6 +88,12 @@ function FeedsTab({ isAdmin }: { isAdmin: boolean }) {
     ["/threat-intel"],
     without("feed_id"),
   );
+  const sync = useApiMutation<{ feed_id: string }, { job_id: string }>(
+    "POST",
+    (b) => `/threat-intel/feeds/${b.feed_id}/sync`,
+    ["/threat-intel"],
+    () => undefined,
+  );
   if (feeds.data && feeds.data.length === 0)
     return (
       <EmptyState title="No feeds configured — the system works without them">
@@ -96,7 +102,8 @@ function FeedsTab({ isAdmin }: { isAdmin: boolean }) {
     );
   return (
     <>
-      <MutationError error={toggle.error} />
+      <MutationError error={toggle.error ?? sync.error} />
+      {sync.data && <JobProgress jobId={sync.data.job_id} />}
       <DataTable
         rows={feeds.data}
         rowKey={(f) => f.feed_id}
@@ -118,9 +125,16 @@ function FeedsTab({ isAdmin }: { isAdmin: boolean }) {
             header: "Enabled",
             render: (f) =>
               isAdmin ? (
-                <Button onClick={() => toggle.mutate({ feed_id: f.feed_id, enabled: !f.enabled })}>
-                  {f.enabled ? "Disable" : "Enable"}
-                </Button>
+                <span className="flex gap-1">
+                  <Button
+                    onClick={() => toggle.mutate({ feed_id: f.feed_id, enabled: !f.enabled })}
+                  >
+                    {f.enabled ? "Disable" : "Enable"}
+                  </Button>
+                  {f.feed_type === "taxii" && (
+                    <Button onClick={() => sync.mutate({ feed_id: f.feed_id })}>Sync now</Button>
+                  )}
+                </span>
               ) : f.enabled ? (
                 "yes"
               ) : (

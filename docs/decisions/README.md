@@ -56,6 +56,7 @@ Positive, negative, and neutral results; follow-up work; how to reverse.
 | [0007](0007-leakage-aware-evaluation.md) | Leakage-aware ML evaluation | accepted |
 | [0008](0008-uv-and-npm.md) | uv for Python, npm for the frontend | accepted |
 | [0009](0009-phase-1-version-baseline.md) | Phase 1 dependency version baseline | accepted |
+| [0010](0010-in-house-sequential-pattern-mining.md) | In-house PrefixSpan-style sequential pattern mining | accepted |
 
 ## Baseline decisions (captured as ADR-0001…0008 in Phase 1)
 

@@ -124,7 +124,7 @@ Reference: MITRE ATT&CK — <https://attack.mitre.org/> (verified; v20 was the c
 
 ## 10. Feed updates, retries, and rate limits
 
-- Feed syncs run as jobs (`POST /api/v1/threat-intel/feeds/{feed_id}/sync`, scheduled polling in Phase 8). In the current build TAXII polling is not implemented: the sync endpoint returns 409 and indicators are loaded from CSV / STIX files (`POST /api/v1/threat-intel/imports`, `cti ti-import`).
+- Feed syncs run as jobs (`POST /api/v1/threat-intel/feeds/{feed_id}/sync` → job `ti.sync`). Implemented in Phase 8 (`app/ti/taxii.py`): `added_after` cursor stored in the last successful run's report, `more`/`next` pagination (max 20 pages per run), retries and 429 handling as below, 50 MB page cap, 30 s timeout, TLS always verified, bearer token read from the environment variable named by `credentials_ref`. Tested against a local stub transport only — no real TAXII server was contacted. Scheduled (automatic) polling is **not** implemented; syncs are started manually.
 - Retries: transient network errors and HTTP 5xx → up to 3 attempts with exponential back-off (30 s, 2 min, 10 min) plus jitter. HTTP 429 → honour `Retry-After` (capped at 1 h), else back-off.
 - Per-feed minimum poll interval (default 60 min) prevents hammering providers; manual sync is rejected with 409 if a sync is already running or the last one started < 5 min ago.
 - 4xx other than 429 (e.g., 401/403/404) → no retry; feed `last_error` set; feed remains enabled but marked unhealthy.
@@ -137,6 +137,6 @@ Reference: MITRE ATT&CK — <https://attack.mitre.org/> (verified; v20 was the c
 |---|---|---|
 | `CTI_TI_RETROHUNT_DAYS` | `30` | Look-back for automatic matching after import (0 = off). Implemented. |
 | *(per feed)* `default_ttl_days` | `90` | Effective expiry fallback; a feed setting (`PATCH /threat-intel/feeds/{id}`), not an environment variable. |
-| `CTI_TI_HTTP_TIMEOUT_S` | `30` | Outbound feed timeout — planned with TAXII polling (Phase 8). |
-| `CTI_TI_MAX_RESPONSE_MB` | `50` | Max feed response size — planned with TAXII polling (Phase 8). |
+| *(constant)* TAXII timeout | 30 s | `TIMEOUT_S` in `app/ti/taxii.py`; not an environment variable in this build. |
+| *(constant)* TAXII page size cap | 50 MB | `MAX_RESPONSE_BYTES` in `app/ti/taxii.py`. |
 | `<feed credentials_ref>` | — | e.g., `CTI_FEED_EXAMPLE_TOKEN`; only needed for authenticated optional feeds. |

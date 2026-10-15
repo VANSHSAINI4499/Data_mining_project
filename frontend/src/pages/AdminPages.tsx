@@ -410,6 +410,10 @@ function FeedsAdminTab() {
   const [key, setKey] = useState("");
   const [name, setName] = useState("");
   const [reliability, setReliability] = useState("F");
+  const [feedType, setFeedType] = useState("csv_file");
+  const [url, setUrl] = useState("");
+  const [collection, setCollection] = useState("");
+  const [credentialsRef, setCredentialsRef] = useState("");
   const create = useApiMutation<Record<string, string>>("POST", "/threat-intel/feeds", [
     "/threat-intel",
   ]);
@@ -433,16 +437,63 @@ function FeedsAdminTab() {
             ))}
           </select>
         </Field>
+        <Field label="Type">
+          <select
+            className={inputClass}
+            value={feedType}
+            onChange={(e) => setFeedType(e.target.value)}
+          >
+            <option value="csv_file">CSV file imports</option>
+            <option value="stix_file">STIX 2.1 file imports</option>
+            <option value="taxii">TAXII 2.1 collection</option>
+          </select>
+        </Field>
+        {feedType === "taxii" && (
+          <>
+            <Field label="API root URL (https)">
+              <input className={inputClass} value={url} onChange={(e) => setUrl(e.target.value)} />
+            </Field>
+            <Field label="Collection ID">
+              <input
+                className={inputClass}
+                value={collection}
+                onChange={(e) => setCollection(e.target.value)}
+              />
+            </Field>
+            <Field label="Token env variable name (optional)">
+              <input
+                className={inputClass}
+                value={credentialsRef}
+                onChange={(e) => setCredentialsRef(e.target.value)}
+              />
+            </Field>
+          </>
+        )}
         <Button
           variant="primary"
           disabled={!key || !name || create.isPending}
-          onClick={() => create.mutate({ feed_key: key, name, feed_type: "csv_file", reliability })}
+          onClick={() =>
+            create.mutate({
+              feed_key: key,
+              name,
+              feed_type: feedType,
+              reliability,
+              ...(feedType === "taxii"
+                ? {
+                    url,
+                    collection_id: collection,
+                    ...(credentialsRef ? { credentials_ref: credentialsRef } : {}),
+                  }
+                : {}),
+            })
+          }
         >
-          Add file feed
+          Add feed
         </Button>
       </div>
       <p className="text-xs text-muted">
-        Remote TAXII polling is not implemented yet (planned for Phase 8).
+        TAXII credentials are never stored: give the name of an environment variable that holds the
+        token on the server.
       </p>
       <MutationError error={create.error} />
       <CodeBlockText

@@ -25,7 +25,7 @@ flowchart LR
 | 5 | Complete except: AC-5.5 partly met (4 of 5 default rules fire on the synthetic planted scenarios; `anomaly_with_malicious_classification` is covered by unit tests only because the scenario plants no src_ip anomaly with history); TAXII polling (5.6, optional) deferred to Phase 8 | see `git log` | CSV/STIX/manual indicators, exact matching, ATT&CK import + mappings, rule DSL, risk_v1, alerts/cases/feedback, CLI. |
 | 6 | Complete; the Audit history page stays a labelled placeholder until its endpoint ships in Phase 7 | see `git log` | `/dashboard/overview`, all §5 pages on real endpoints (Recharts), page state tests, live check against the dev database. |
 | 7 | Complete except: NFR-03 throughput target not met (899 rows/s measured); DB role separation not implemented; Docker path and public-dataset items not run, so the MVP checklist (AC-7.9) is not fully met — see [docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md) | see `git log` | Rate limits, headers, audit history, retention, dependency audits, measurements ([docs/PERFORMANCE.md](docs/PERFORMANCE.md)), fresh-clone walkthrough. |
-| 8 | Not started | | |
+| 8 | Complete with limits: no automatic scheduling (syncs, drift checks, and incremental runs are started by command/API; `cti watch` polls continuously); TAXII tested against a local stub only; anomaly windows already scored are not rescored when late events arrive | see `git log` | Watermarks + incremental processing, `cti watch`, drift reports, sequential pattern mining (ADR-0010), TAXII 2.1 polling. |
 
 Phases 3 and 4 both depend only on Phase 2 and could be swapped, but they are done **sequentially** (3 then 4) to keep one phase in flight.
 

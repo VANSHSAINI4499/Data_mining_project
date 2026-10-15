@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import os
 import re
 import tomllib
 import uuid
@@ -35,6 +37,7 @@ from app.repositories import ti as repo
 from app.services import audit
 from app.services import jobs as jobs_service
 from app.services.actors import Actor
+from app.ti import taxii
 from app.ti.indicators import (
     IndicatorError,
     ParsedIndicator,
@@ -57,10 +60,17 @@ _ENV_NAME = re.compile(r"^[A-Z][A-Z0-9_]{2,63}$")
 # --- feeds ---------------------------------------------------------------------------------------
 
 
+def _not_configured(feed: TiFeed) -> bool:
+    if feed.feed_type != "taxii":
+        return False
+    missing_secret = bool(feed.credentials_ref) and not os.environ.get(feed.credentials_ref or "")
+    return not feed.url or not feed.collection_id or missing_secret
+
+
 def _feed_out(feed: TiFeed, count: int = 0) -> dict[str, Any]:
     health = (
         "not_configured"
-        if feed.feed_type == "taxii" and not feed.url
+        if _not_configured(feed)
         else (
             "error"
             if feed.last_error
@@ -177,23 +187,148 @@ def feed_id_for_key(session: Session, feed_key: str) -> uuid.UUID:
     return feed_id
 
 
-def sync_feed(session: Session, actor: Actor, feed_id: uuid.UUID) -> None:
+SYNC_JOB = "ti.sync"
+MIN_SYNC_SPACING = timedelta(minutes=5)
+
+
+def _taxii_token(feed: TiFeed) -> str | None:
+    if not feed.credentials_ref:
+        return None
+    token = os.environ.get(feed.credentials_ref)
+    if not token:
+        raise ConflictError(
+            f"feed is not configured: environment variable {feed.credentials_ref} is not set"
+        )
+    return token
+
+
+def sync_feed(session: Session, actor: Actor, feed_id: uuid.UUID) -> TiFeedRun:
+    """Queue a TAXII 2.1 poll (THREAT_INTELLIGENCE.md §10). Returns the queued feed run."""
     with session.begin():
-        feed = session.get(TiFeed, feed_id)
+        feed = session.get(TiFeed, feed_id, with_for_update=True)
         if feed is None:
             raise NotFoundError(f"feed {feed_id} not found")
+        if feed.feed_type != "taxii":
+            raise ConflictError("only TAXII feeds can be synced; import files for other feeds")
+        if not feed.enabled:
+            raise ConflictError("feed is disabled")
+        if not feed.url or not feed.collection_id:
+            raise ConflictError("feed is not configured: TAXII API root URL and collection ID")
+        _taxii_token(feed)
+        recent = session.scalar(
+            select(TiFeedRun)
+            .where(TiFeedRun.feed_id == feed_id, TiFeedRun.source_description.like("taxii:%"))
+            .order_by(TiFeedRun.started_at.desc())
+            .limit(1)
+        )
+        if recent is not None and (
+            recent.status in ("queued", "running")
+            or clock.now() - recent.started_at < MIN_SYNC_SPACING
+        ):
+            raise ConflictError("a sync is already running or started less than 5 minutes ago")
+        run = TiFeedRun(
+            feed_run_id=uuid.uuid4(),
+            feed_id=feed_id,
+            status="queued",
+            source_description=f"taxii:{feed.collection_id}"[:200],
+            report={"format": "taxii"},
+        )
+        session.add(run)
+        session.flush()
+        job = jobs_service.enqueue_in_transaction(
+            session, actor, SYNC_JOB, {"feed_run_id": str(run.feed_run_id)}
+        )
+        run.job_id = job.job_id
         audit.record(
             session,
             actor,
             "ti.feed_sync_requested",
             target_type="ti_feed",
             target_id=feed_id,
-            outcome="error",
+            details={"feed_run_id": str(run.feed_run_id)},
         )
-    raise ConflictError(
-        "remote feed polling (TAXII 2.1) is not implemented yet; it is planned for Phase 8. "
-        "Import CSV or STIX 2.1 files with POST /threat-intel/imports instead."
-    )
+        session.flush()
+        session.expunge(run)
+        return run
+
+
+def run_sync(
+    factory: sessionmaker[Session],
+    run_id: uuid.UUID,
+    *,
+    transport: Any = None,
+    sleep: Any = None,
+) -> TiFeedRun:
+    """Poll the feed's TAXII collection and upsert indicators. A failure never deletes
+    existing indicators; the cursor advances only on success."""
+    with factory() as session, session.begin():
+        run = session.get(TiFeedRun, run_id, with_for_update=True)
+        if run is None:
+            raise NotFoundError(f"feed run {run_id} not found")
+        feed = session.get(TiFeed, run.feed_id)
+        assert feed is not None
+        run.status = "running"
+        last_ok = session.scalar(
+            select(TiFeedRun)
+            .where(
+                TiFeedRun.feed_id == feed.feed_id,
+                TiFeedRun.status == "succeeded",
+                TiFeedRun.source_description.like("taxii:%"),
+            )
+            .order_by(TiFeedRun.started_at.desc())
+            .limit(1)
+        )
+        cursor = (last_ok.report or {}).get("cursor") if last_ok else None
+        api_root, collection, feed_id = feed.url or "", feed.collection_id or "", feed.feed_id
+        token = _taxii_token(feed)
+    try:
+        polled = taxii.poll(
+            api_root=api_root,
+            collection_id=collection,
+            added_after=cursor,
+            token=token,
+            transport=transport,
+            sleep=sleep,
+        )
+        bundle = json.dumps(
+            {"type": "bundle", "id": f"bundle--{run_id}", "objects": polled.objects}
+        ).encode()
+        parsed = parse_stix_bundle(bundle)
+    except (taxii.TaxiiError, IndicatorError) as exc:
+        with factory() as session, session.begin():
+            run = session.get(TiFeedRun, run_id, with_for_update=True)
+            feed = session.get(TiFeed, feed_id)
+            assert run is not None and feed is not None
+            run.status, run.finished_at, run.error = "failed", clock.now(), str(exc)[:500]
+            feed.last_error, feed.last_error_at = str(exc)[:500], clock.now()
+        raise
+    counts = {"created": 0, "updated": 0, "unchanged": 0}
+    with factory() as session, session.begin():
+        feed = session.get(TiFeed, feed_id)
+        run = session.get(TiFeedRun, run_id, with_for_update=True)
+        assert feed is not None and run is not None
+        for item in parsed.indicators:
+            counts[upsert_indicator(session, feed, item, run_id)] += 1
+        feed.last_success_at = clock.now()
+        run.status, run.finished_at = "succeeded", clock.now()
+        run.indicators_received = parsed.received
+        run.indicators_created, run.indicators_updated = counts["created"], counts["updated"]
+        run.indicators_rejected = len(parsed.rejected)
+        run.report = {
+            "format": "taxii",
+            "cursor_used": cursor,
+            "cursor": polled.cursor,
+            "pages": polled.pages,
+            "more_available": polled.more_available,
+            "retries": polled.retries,
+            "objects": len(polled.objects),
+            "unchanged": counts["unchanged"],
+            "rejected": parsed.rejected[:500],
+            "unsupported_patterns": parsed.unsupported_patterns[:500],
+        }
+        session.flush()
+        session.expunge(run)
+        return run
 
 
 # --- imports -------------------------------------------------------------------------------------

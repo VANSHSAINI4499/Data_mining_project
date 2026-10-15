@@ -100,11 +100,17 @@ def _describe(model: MlModel, run: MlTrainingRun | None) -> dict[str, Any]:
 def list_models(
     session: Session, task: str | None, name: str | None, status: str | None
 ) -> list[dict[str, Any]]:
+    from app.services.drift import latest_status
+
     with session.begin():
-        return [_describe(m, None) for m in repo.list_models(session, task, name, status)]
+        models = list(repo.list_models(session, task, name, status))
+        drift = latest_status(session, [m.model_id for m in models])
+        return [_describe(m, None) | {"latest_drift": drift.get(m.model_id)} for m in models]
 
 
 def get_model(session: Session, settings: Settings, model_id: uuid.UUID) -> dict[str, Any]:
+    from app.services.drift import latest_status
+
     with session.begin():
         model = repo.get_model(session, model_id)
         if model is None:
@@ -112,6 +118,7 @@ def get_model(session: Session, settings: Settings, model_id: uuid.UUID) -> dict
         run = repo.get_run(session, model.training_run_id)
         active = repo.active_model(session, model.name)
         info = _describe(model, run)
+        info["latest_drift"] = latest_status(session, [model.model_id]).get(model.model_id)
         info["promotion_gate"] = None
         if run is not None:
             other_active = active is not None and active.model_id != model.model_id
