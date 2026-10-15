@@ -234,6 +234,11 @@ def compute(
             raise NotFoundError(f"model {model_id} not found")
         run = session.get(MlTrainingRun, model.training_run_id)
         assert run is not None
+        if model.task not in ("classification", "anomaly"):
+            raise ValidationFailedError(
+                f"drift reports are not available for {model.task} models: they classify "
+                "submitted values on demand and store no predictions to compare"
+            )
         if model.task == "classification":
             ref = reference or (start - (end - start), start)
             _check_range(*ref)
@@ -273,8 +278,11 @@ def start(
 ) -> uuid.UUID:
     _check_range(start, end)
     with session.begin():
-        if session.get(MlModel, model_id) is None:
+        model = session.get(MlModel, model_id)
+        if model is None:
             raise NotFoundError(f"model {model_id} not found")
+        if model.task not in ("classification", "anomaly"):
+            raise ValidationFailedError(f"drift reports are not available for {model.task} models")
         job = jobs_service.enqueue_in_transaction(
             session,
             actor,

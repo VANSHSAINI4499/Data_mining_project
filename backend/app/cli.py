@@ -170,6 +170,8 @@ def cmd_train(args: argparse.Namespace) -> int:
 
     if args.task == "anomaly":
         return _train_anomaly(args)
+    if args.task == "web-payload":
+        return _train_web_payload(args)
     config = classification.load_config_file(Path(args.config), args.batch_id or [])
     factory = get_session_factory()
     with factory() as session:
@@ -512,6 +514,53 @@ def cmd_mine_patterns(args: argparse.Namespace) -> int:
     return 0
 
 
+def _train_web_payload(args: argparse.Namespace) -> int:
+    from app.services import web_payload
+
+    result = web_payload.train_from_directory(
+        get_session_factory(), get_settings(), CLI_ACTOR, Path(args.dataset_dir), seed=args.seed
+    )
+    report = result["report"]
+    primary = report["primary_model"]
+    test = report["models"][primary]["test"]
+    print(
+        json.dumps(
+            {
+                "run_id": result["run_id"],
+                "model_id": result["model_id"],
+                "version": result["version"],
+                "artifact_path": result["artifact_path"],
+                "selected_model": primary,
+                "test_macro_f1": test["macro_f1"],
+                "test_weighted_f1": test["weighted_f1"],
+                "timings_seconds": report["timings_seconds"],
+                "status": "candidate (promote with `cti models promote MODEL_ID`)",
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
+def cmd_classify_payload(args: argparse.Namespace) -> int:
+    import uuid
+
+    from app.services import web_payload
+
+    payloads = list(args.payload)
+    if args.file:
+        payloads += Path(args.file).read_text(encoding="utf-8").splitlines()
+    with get_session_factory()() as session:
+        result = web_payload.classify(
+            session,
+            get_settings(),
+            payloads,
+            uuid.UUID(args.model_id) if args.model_id else None,
+        )
+    print(json.dumps(result, default=str, indent=2))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cti", description="CTI Warehouse operator commands")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -550,7 +599,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_generate_synthetic)
 
     p = sub.add_parser("train", help="train a model inline")
-    p.add_argument("task", choices=["classifier", "anomaly"])
+    p.add_argument("task", choices=["classifier", "anomaly", "web-payload"])
+    p.add_argument(
+        "--dataset-dir",
+        default="data/external/httpparams",
+        help="web-payload: HTTPParamsDataset folder inside CTI_IMPORT_ROOT",
+    )
+    p.add_argument("--seed", type=int, default=42, help="web-payload: random seed")
     p.add_argument("--config", default="config/ml/classifier_default.toml")
     p.add_argument("--batch-id", action="append")
     p.set_defaults(func=cmd_train)
@@ -648,6 +703,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-gap-minutes", type=int, default=30)
     p.add_argument("--min-malicious-ratio", type=float, default=0.5)
     p.set_defaults(func=cmd_mine_patterns)
+
+    p = sub.add_parser(
+        "classify-payload", help="classify HTTP parameter values with the web payload model"
+    )
+    p.add_argument("payload", nargs="*", help="parameter values to classify")
+    p.add_argument("--file", help="text file with one parameter value per line")
+    p.add_argument("--model-id", help="use this model instead of the active one")
+    p.set_defaults(func=cmd_classify_payload)
 
     p = sub.add_parser("worker", help="run the background job worker")
     p.add_argument("--heartbeat-file", help="file touched every poll interval (health checks)")

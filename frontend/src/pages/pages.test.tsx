@@ -400,3 +400,71 @@ describe("ingestion", () => {
     expect(await screen.findByText("c8234486")).toBeInTheDocument();
   });
 });
+
+describe("web payload classifier card", () => {
+  it("classifies parameter values and labels the scope", async () => {
+    loggedInAs("analyst");
+    let sent: unknown = null;
+    server.use(
+      http.get(`${API}/classification/summary`, () =>
+        problemResponse(problem(404, "Not found", "no active model named 'attack_classifier'")),
+      ),
+      http.get(`${API}/classification/training-runs`, () => HttpResponse.json([])),
+      http.post(`${API}/web-payloads/classify`, async ({ request }) => {
+        sent = await request.json();
+        return HttpResponse.json({
+          model: {
+            name: "web_attack_classifier",
+            version: 1,
+            status: "active",
+            algorithm: "logistic_regression",
+          },
+          note: "classifies individual HTTP parameter values only",
+          results: [
+            {
+              index: 0,
+              predicted_class: "BENIGN",
+              is_attack_like: false,
+              score: 0.98,
+              score_kind: "x",
+              empty_input: false,
+              truncated: false,
+            },
+            {
+              index: 1,
+              predicted_class: "SQLI",
+              is_attack_like: true,
+              score: 0.99,
+              score_kind: "x",
+              empty_input: false,
+              truncated: false,
+            },
+          ],
+        });
+      }),
+    );
+    renderApp("/classification");
+    const user = userEvent.setup();
+    const box = await screen.findByLabelText("Parameter values, one per line");
+    await user.type(box, "calle mayor 5{enter}1' or 1=1 --");
+    await user.click(screen.getByRole("button", { name: "Classify" }));
+    const table = await screen.findByRole("table", { name: "Payload classifications" });
+    expect(within(table).getByText("SQLI")).toBeInTheDocument();
+    expect(within(table).getByText("1' or 1=1 --")).toBeInTheDocument();
+    expect(sent).toEqual({ payloads: ["calle mayor 5", "1' or 1=1 --"] });
+    expect(screen.getByText(/never blocks anything/)).toBeInTheDocument();
+  });
+
+  it("is hidden from viewers", async () => {
+    loggedInAs("viewer");
+    server.use(
+      http.get(`${API}/classification/summary`, () =>
+        problemResponse(problem(404, "Not found", "no active model")),
+      ),
+      http.get(`${API}/classification/training-runs`, () => HttpResponse.json([])),
+    );
+    renderApp("/classification");
+    expect(await screen.findByText("No active classifier")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Parameter values, one per line")).not.toBeInTheDocument();
+  });
+});

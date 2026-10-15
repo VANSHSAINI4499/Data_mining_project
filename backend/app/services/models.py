@@ -59,6 +59,19 @@ def gate_problems(model: MlModel, run: MlTrainingRun, has_active: bool) -> list[
             problems.append("threshold or reference-period report is missing")
         elif metrics["reference"].get("too_short"):
             problems.append("reference period is shorter than the configured minimum")
+    if model.task == "web_payload_classification":
+        models = metrics.get("models", {})
+        try:
+            candidate = models[metrics["primary_model"]]["test"]["macro_f1"]
+            dummy = models["dummy_stratified"]["test"]["macro_f1"]
+        except KeyError:
+            problems.append("evaluation report is incomplete")
+        else:
+            if not candidate > dummy:
+                problems.append(
+                    f"test macro-F1 {candidate:.4f} does not beat the stratified "
+                    f"dummy baseline {dummy:.4f}"
+                )
     return problems
 
 
@@ -71,6 +84,15 @@ def _describe(model: MlModel, run: MlTrainingRun | None) -> dict[str, Any]:
             "test_weighted_f1": rf.get("weighted_f1"),
             "snapshot_hash": (run.dataset_snapshot or {}).get("snapshot_hash"),
             "split_strategy": run.split_strategy,
+        }
+    elif run and run.metrics and model.task == "web_payload_classification":
+        test = run.metrics["models"][run.metrics["primary_model"]]["test"]
+        summary = {
+            "test_macro_f1": test.get("macro_f1"),
+            "test_weighted_f1": test.get("weighted_f1"),
+            "snapshot_hash": (run.dataset_snapshot or {}).get("snapshot_hash"),
+            "split_strategy": run.split_strategy,
+            "input": "single HTTP parameter value (text)",
         }
     elif run and run.metrics and model.task == "anomaly":
         summary = {

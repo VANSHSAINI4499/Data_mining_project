@@ -204,6 +204,8 @@ Public datasets are downloaded manually (UNSW-NB15: <https://research.unsw.edu.a
 | `cti generate-synthetic [--seed S] [--days D] [--flows-per-hour N] --out DIR` | Deterministic synthetic scenario: `events.jsonl`, `synthetic_indicators.csv`, `expected.json`. The committed sample is `data/samples/synthetic-seed42/`. | 2 |
 | `cti train classifier [--config FILE] --batch-id ID [--batch-id ID ...]` | Train inline; prints run id and test macro/weighted F1 and leakage warnings. | 3 |
 | `cti train anomaly [--config FILE]` | Train an anomaly model inline (default `config/ml/anomaly_account_1h.toml`). | 4 |
+| `cti train web-payload [--dataset-dir data/external/httpparams] [--seed N]` | Train the HTTP-parameter payload classifier from HTTPParamsDataset (downloaded separately) and register a candidate `web_attack_classifier` ([model card](docs/models/web_attack_classifier.md)). | ext. |
+| `cti classify-payload [--model-id ID] [--file F] VALUE ...` | Classify HTTP parameter values with the active (or given) web payload model. | ext. |
 | `cti score classifier (--batch-id ID ... \| --from T --to T)` | Score with the active classifier inline. | 3 |
 | `cti score anomaly --from T --to T [--name NAME \| --model-id ID]` | Score entity windows with an anomaly model inline. | 4 |
 | `cti models list\|promote\|archive\|reject [MODEL_ID] [--reason R]` | Registry operations (promotion applies the gate). | 3 |

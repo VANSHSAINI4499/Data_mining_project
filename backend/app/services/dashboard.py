@@ -110,6 +110,23 @@ def overview(session: Session, start: datetime, end: datetime) -> dict[str, Any]
             }
             if model.task == "classification":
                 entry |= _classifier_summary(session, model, run)
+            elif model.task == "web_payload_classification":
+                test = (
+                    (run.metrics or {})
+                    .get("models", {})
+                    .get((run.metrics or {}).get("primary_model", ""), {})
+                    .get("test", {})
+                )
+                entry |= {
+                    "test_metrics": {
+                        k: test.get(k) for k in ("macro_f1", "weighted_f1", "accuracy", "rows")
+                    },
+                    "evaluated_on": {
+                        "split": "held-out grouped test split of HTTPParamsDataset payloads",
+                        "datasets": ["HTTPParamsDataset (HTTP parameter values)"],
+                        "snapshot_rows": (run.dataset_snapshot or {}).get("rows"),
+                    },
+                }
             else:
                 entry |= _anomaly_summary(model, run)
             models.append(entry)

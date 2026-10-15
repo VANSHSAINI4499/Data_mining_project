@@ -32,7 +32,7 @@ frontend/src/**/*.test.tsx, frontend/src/test/ (setup, MSW handlers)
 | Coverage | `cd backend && uv run pytest --cov=app --cov-report=term-missing` |
 | Migration tests | `cd backend && uv run pytest tests/integration/test_migrations.py` |
 | E2E (API-level) | start the stack natively ([DEPLOYMENT_GUIDE.md §5–§6](DEPLOYMENT_GUIDE.md#5-backend-and-worker)) then `cd backend && uv run pytest -m e2e` |
-| Optional dataset tests | `cd backend && CTI_DATASET_DIR=../data/external uv run pytest -m dataset` |
+| Optional dataset tests | `cd backend && CTI_DATASET_DIR=../data/external uv run pytest -m dataset` (includes the HTTPParamsDataset training test when `data/external/httpparams/` exists) |
 | Frontend lint/type | `cd frontend && npm run lint && npm run typecheck` |
 | Frontend tests | `cd frontend && npm run test -- --run` |
 | Frontend build | `cd frontend && npm run build` |

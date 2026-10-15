@@ -26,6 +26,7 @@ import { hasRole, useSession } from "../hooks/useSession";
 import { formatNumber, formatScore, formatTime, shortId } from "../lib/format";
 import { useTimeRange } from "../lib/timeRange";
 import { FeedbackForm } from "./FeedbackForm";
+import { WebPayloadCard } from "./WebPayloadCard";
 
 // --- classification ------------------------------------------------------------------------------
 
@@ -218,6 +219,7 @@ export function ClassificationPage() {
           ]}
         />
       </Card>
+      {hasRole(session.data?.user, "analyst") && <WebPayloadCard />}
       {hasRole(session.data?.user, "admin") && <TrainForm />}
     </div>
   );

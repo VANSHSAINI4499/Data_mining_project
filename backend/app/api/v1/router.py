@@ -19,6 +19,7 @@ from app.api.v1 import (
     sources,
     threat_intel,
     users,
+    web_payload,
 )
 from app.api.v1.router_prefix import API_PREFIX
 
@@ -41,6 +42,7 @@ ROUTERS = (
     investigations.router,
     dashboard.router,
     audit.router,
+    web_payload.router,
 )
 
 api_router = APIRouter(prefix=API_PREFIX)

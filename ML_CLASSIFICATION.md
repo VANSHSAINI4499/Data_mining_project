@@ -248,3 +248,7 @@ max_minutes = 30
 - The comparison with the active model is computed automatically during training when the feature sets match; otherwise the report states why it was skipped.
 - CLI training/scoring run inline (`cti train classifier`, `cti score classifier`); the API enqueues jobs for the worker.
 - Measured example (synthetic data, seed 42, 6–10 days, not a benchmark): see the Phase 3 commit message; results on public datasets have not been produced because no dataset is present (AC-3.9 not run).
+
+## Web payload classifier (separate model)
+
+A second, independent classifier labels **single HTTP parameter values** as `BENIGN`, `SQLI`, `XSS`, `PATH_TRAVERSAL`, or `CMDI`. It is trained on the public HTTPParamsDataset with a grouped, leakage-aware split and character n-gram TF-IDF + logistic regression, registered as `web_attack_classifier` under task `web_payload_classification`, and never shares inputs with the network-flow `attack_classifier`. It does not classify full requests or logs. Details, measured results, and limitations: [docs/models/web_attack_classifier.md](docs/models/web_attack_classifier.md).

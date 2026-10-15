@@ -30,7 +30,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, created_at_column
 
-TASKS = ("classification", "anomaly")
+TASKS = ("classification", "anomaly", "web_payload_classification")
 RUN_STATUSES = ("queued", "running", "succeeded", "failed")
 MODEL_STATUSES = ("candidate", "active", "archived", "rejected")
 
