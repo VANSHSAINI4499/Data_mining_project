@@ -1,6 +1,6 @@
 # Performance measurements (NFR-03, NFR-04)
 
-Measured on 2026-10-15 for [AC-7.6](../ACCEPTANCE_CRITERIA.md#phase-7--security-testing-deployment-and-documentation). All numbers below are **measured**; nothing is extrapolated.
+Measured on 2026-10-15 for [AC-7.6](../ACCEPTANCE_CRITERIA.md#phase-7--security-testing-deployment-documentation). All numbers below are **measured**; nothing is extrapolated.
 
 ## Environment
 
