@@ -32,6 +32,7 @@ from app.models import (
     MlModel,
     TiFeed,
     TiIndicator,
+    WebPayloadResult,
 )
 from app.services import audit
 from app.services import jobs as jobs_service
@@ -43,6 +44,10 @@ RULES_FILE = REPO_ROOT / "config" / "correlation_rules" / "default.toml"
 MAX_EVIDENCE_PER_ALERT = 10_000
 OPEN_STATUSES = ("new", "acknowledged", "in_review")
 CLASSIFIER_NAME = "attack_classifier"
+WEB_PAYLOAD_MODEL = "web_attack_classifier"
+PROBABILITY_SCORE_KIND = "logistic_regression_probability_uncalibrated"
+# Web payload classes are not dim_attack_category codes; for risk they count as WEB_ATTACK.
+WEB_PAYLOAD_CATEGORY = "WEB_ATTACK"
 
 
 def parse_rule(data: dict[str, Any]) -> RuleDefinition:
@@ -354,6 +359,8 @@ def load_evidence(
             )
             for r in rows
         ]
+    elif step.evidence == "web_payload_result":
+        out = _web_payload_evidence(session, step, entity, start, end)
     elif step.evidence == "anomaly_result":
         if rule.entity_type == "dst_ip":
             return []
@@ -434,6 +441,62 @@ def load_evidence(
     return out
 
 
+def _web_payload_evidence(
+    session: Session, step: RuleStep, entity: Any, start: datetime, end: datetime
+) -> list[Evidence]:
+    model = session.scalar(
+        select(MlModel).where(MlModel.name == WEB_PAYLOAD_MODEL, MlModel.status == "active")
+    )
+    if model is None:
+        return []
+    W = WebPayloadResult
+    where = step.where
+    conds: list[ColumnElement[bool]] = [
+        W.model_id == model.model_id,
+        W.event_time >= start,
+        W.event_time < end,
+        entity.is_not(None),
+    ]
+    if "predicted_class" in where:
+        conds.append(
+            W.predicted_class.in_([str(v).upper() for v in _list(where["predicted_class"])])
+        )
+    if where.get("exclude_benign"):
+        conds.append(W.is_attack_like.is_(True))
+    if "min_score" in where:
+        conds += [W.score_kind == PROBABILITY_SCORE_KIND, W.score >= float(where["min_score"])]
+    rows = session.execute(
+        select(
+            W.result_id,
+            W.event_time,
+            entity.label("entity"),
+            W.param_name,
+            W.predicted_class,
+            W.score,
+            W.score_kind,
+        )
+        .join(F, and_(F.event_id == W.event_id, F.event_time == W.event_time))
+        .where(*conds)
+    )
+    return [
+        Evidence(
+            step.id,
+            "web_payload_result",
+            r.result_id,
+            str(r.entity),
+            r.event_time,
+            {
+                "param_name": r.param_name[:64],
+                "predicted_class": r.predicted_class,
+                "score": float(r.score),
+                "score_kind": r.score_kind,
+                "evidence_ref": r.result_id,
+            },
+        )
+        for r in rows
+    ]
+
+
 # --- alerts --------------------------------------------------------------------------------------
 
 
@@ -479,6 +542,42 @@ def _risk_inputs(session: Session, alert_id: uuid.UUID) -> dict[str, list[dict[s
             .where(ev.alert_id == alert_id)
         )
     ]
+    web_weight = session.scalar(
+        select(DimAttackCategory.severity_weight).where(
+            DimAttackCategory.code == WEB_PAYLOAD_CATEGORY
+        )
+    )
+    if web_weight is not None:
+        classifications += [
+            {
+                "predicted_category": WEB_PAYLOAD_CATEGORY,
+                "predicted_score": float(score),
+                "severity_weight": float(web_weight),
+                "evidence_ref": ref,
+                "evidence_type": "web_payload_result",
+                "web_payload_class": cls,
+            }
+            for ref, score, cls in session.execute(
+                select(
+                    WebPayloadResult.result_id,
+                    WebPayloadResult.score,
+                    WebPayloadResult.predicted_class,
+                )
+                .join(
+                    ev,
+                    and_(
+                        ev.evidence_ref == WebPayloadResult.result_id,
+                        ev.evidence_type == "web_payload_result",
+                    ),
+                )
+                .where(
+                    ev.alert_id == alert_id,
+                    WebPayloadResult.is_attack_like.is_(True),
+                    # Only probability-type scores are on the 0-1 scale the formula expects.
+                    WebPayloadResult.score_kind == PROBABILITY_SCORE_KIND,
+                )
+            )
+        ]
     anomalies = [
         {"score_percentile": float(p or 0), "anomaly_score": float(s), "evidence_ref": ref}
         for ref, p, s in session.execute(

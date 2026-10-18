@@ -89,3 +89,17 @@ evidence = "event"
 where = { event_type = "ids_alert" }
 min_count = 5
 same = "signature_id"
+
+[[rule]]
+key = "web_attack_payloads_from_client"
+version = 1
+name = "Repeated attack-like web request parameters from one client"
+description = "At least two decoded HTTP query-parameter values from one client IP classified as attack-like (SQLI, XSS, path traversal, command injection; score >= 0.6) by the active web payload model within an hour. The model judges parameter values only, not whether a request succeeded."
+entity_type = "src_ip"
+window = "1h"
+base_severity = "medium"
+[[rule.steps]]
+id = "payloads"
+evidence = "web_payload_result"
+where = { exclude_benign = true, min_score = 0.6 }
+min_count = 2

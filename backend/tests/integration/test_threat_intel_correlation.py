@@ -298,7 +298,7 @@ def test_rule_management_versions_and_validation(
     admin = login("root", Role.ADMIN)
     h = admin.headers()
     rules = admin.client.get("/api/v1/correlation/rules").json()
-    assert len(rules) == 5 and all(r["version"] == 1 for r in rules)
+    assert len(rules) == 6 and all(r["version"] == 1 for r in rules)
     bad = admin.client.post(
         "/api/v1/correlation/rules",
         json={

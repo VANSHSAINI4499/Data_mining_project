@@ -20,7 +20,9 @@ WINDOWS = {
     "6h": timedelta(hours=6),
     "24h": timedelta(hours=24),
 }
-EvidenceType = Literal["event", "classification_result", "anomaly_result", "indicator_match"]
+EvidenceType = Literal[
+    "event", "classification_result", "anomaly_result", "indicator_match", "web_payload_result"
+]
 ENTITY_TYPES = ("account", "src_ip", "dst_ip", "host")
 
 # Allow-listed `where` keys per evidence type, with the expected value kinds.
@@ -43,6 +45,13 @@ ALLOWED_WHERE: dict[str, dict[str, str]] = {
         "min_confidence": "percent",
         "indicator_state": "str_or_list",
         "indicator_type": "str_or_list",
+    },
+    # Per decoded HTTP query parameter (active web payload model). ``min_score`` only matches
+    # probability-type scores; SVM decision scores are not on a 0-1 scale and never match it.
+    "web_payload_result": {
+        "predicted_class": "str_or_list",
+        "exclude_benign": "bool",
+        "min_score": "unit_float",
     },
 }
 

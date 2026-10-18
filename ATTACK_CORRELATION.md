@@ -17,6 +17,7 @@ How evidence from events, classifications, anomalies, and indicator matches is c
 | `classification_result` | `classification_result` (active model only by default) | event's `src_ip`/`dst_ip` |
 | `anomaly_result` | `anomaly_result` with `is_flagged = true` | window's entity |
 | `indicator_match` | `indicator_match` with state `active` (default) | the event's counterpart entity |
+| `web_payload_result` | `web_payload_result` of the **active** `web_attack_classifier` (one row per decoded HTTP query parameter) | the HTTP event's `src_ip` (the client) |
 
 Asset importance comes from `dim_asset.criticality` of the involved entity (`unknown` if no inventory).
 
@@ -52,7 +53,8 @@ after = "failures"              # ordering constraint within the window
 
 DSL constraints (validated by a Pydantic schema; invalid rules are rejected with 422):
 
-- `evidence` ∈ {`event`, `classification_result`, `anomaly_result`, `indicator_match`}.
+- `evidence` ∈ {`event`, `classification_result`, `anomaly_result`, `indicator_match`, `web_payload_result`}.
+- `web_payload_result` filters: `predicted_class` (`SQLI`, `XSS`, `PATH_TRAVERSAL`, `CMDI`, `BENIGN`; string or list), `exclude_benign` (attack-like values only), `min_score` (0–1). `min_score` only matches probability-type scores (logistic regression); a linear-SVM model's decision scores are not on a 0–1 scale and never satisfy it. `min_count` counts parameter values, so two attack-like parameters in one request count as two.
 - `where` keys must be on a per-evidence-type **allowlist** of canonical fields (e.g., `event_type`, `auth_result`, `dst_port`, `signature_id`, `predicted_category`, `min_predicted_score`, `exclude_benign`, `min_score_percentile`, `min_confidence`, `indicator_state`). Operators: equality, `in` (list), `min_*`/`max_*` thresholds. No free-form SQL, expressions, or regex. An `event` step may also set `same` (`signature_id`, `dst_port`, or `dst_ip`) to require that `min_count` items share one value of that field.
 - `window` ∈ {`5m`, `15m`, `1h`, `2h`, `6h`, `24h`}; `min_count` ≥ 1; `after` references an earlier step.
 - Rules compile to parameterised SQLAlchemy queries.
@@ -66,6 +68,7 @@ DSL constraints (validated by a Pydantic schema; invalid rules are rejected with
 | `recon_then_attack` | `src_ip` | ≥ 1 event classified `RECONNAISSANCE` (score ≥ 0.6), followed by ≥ 1 event from the same `src_ip` classified as any other non-benign category (score ≥ 0.6). | 2h | medium |
 | `anomaly_with_malicious_classification` | `src_ip` / `host` | A flagged anomaly window for the entity overlapping ≥ 1 event of that entity with a non-benign classification (score ≥ 0.6). | 1h | medium |
 | `repeated_ids_signature` | `src_ip` | ≥ 5 `ids_alert` events with the same `signature_id` from the same `src_ip`. | 1h | low |
+| `web_attack_payloads_from_client` | `src_ip` | ≥ 2 decoded query-parameter values from the client classified attack-like by the active web payload model (score ≥ 0.6). The model sees parameter values only: an alert does not mean a request succeeded or was malicious in intent (scanners and security tests look the same). | 1h | medium |
 
 Thresholds are starting points, to be tuned with analyst feedback; tuning creates a new rule version.
 
@@ -82,7 +85,7 @@ A transparent, additive 0–100 score. **Not a probability.** Version `risk_v1`,
 
 | Component | Max | Formula (over the alert's evidence) |
 |---|---|---|
-| `classification` | 30 | 30 × max(`severity_weight(predicted_category)` × `predicted_score`) over non-benign classifications |
+| `classification` | 30 | 30 × max(`severity_weight(predicted_category)` × `predicted_score`) over non-benign classifications. Attack-like `web_payload_result` evidence also counts here, as category `WEB_ATTACK` (its `severity_weight`) × the parameter's score, only when the score is probability-type; the chosen input records `evidence_type: web_payload_result` and the model's class. Alerts without web payload evidence score exactly as before (`risk_v1` unchanged for them). |
 | `anomaly` | 20 | 20 × max(`score_percentile` / 100) over flagged anomaly windows |
 | `threat_intel` | 30 | 30 × max(`confidence`/100 × `reliability_weight(feed)`) over active matches |
 | `repetition` | 10 | 10 × min(1, log10(`evidence_count`) / 3) |

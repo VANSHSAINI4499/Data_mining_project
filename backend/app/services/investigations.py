@@ -26,6 +26,7 @@ from app.models import (
     IncidentCase,
     IndicatorMatch,
     MlModel,
+    WebPayloadResult,
 )
 from app.services import audit
 from app.services.actors import Actor
@@ -42,6 +43,7 @@ EVIDENCE_CATEGORY = {
     "classification_result": "model_output",
     "anomaly_result": "model_output",
     "indicator_match": "threat_intel_match",
+    "web_payload_result": "model_output",
 }
 
 
@@ -139,6 +141,7 @@ def _evidence_rows(session: Session, alert_id: uuid.UUID, limit: int) -> list[di
     derived = {
         "classification_result": (ClassificationResult.result_id, ClassificationResult.event_id),
         "indicator_match": (IndicatorMatch.match_id, IndicatorMatch.event_id),
+        "web_payload_result": (WebPayloadResult.result_id, WebPayloadResult.event_id),
     }
     event_of: dict[tuple[str, int], int] = {}
     for kind, (ref_col, event_col) in derived.items():
@@ -688,7 +691,7 @@ def feedback_summary(session: Session) -> dict[str, Any]:
 
 
 def alerts_for_event(session: Session, event_id: int) -> list[dict[str, Any]]:
-    """Alerts whose evidence is this event, or a match / classification derived from it."""
+    """Alerts whose evidence is this event, or a match / prediction derived from it."""
     ev = AlertEvidence
     refs = [
         select(ev.alert_id).where(ev.evidence_type == "event", ev.evidence_ref == event_id),
@@ -701,6 +704,9 @@ def alerts_for_event(session: Session, event_id: int) -> list[dict[str, Any]]:
             ev.evidence_type == "classification_result",
             ClassificationResult.event_id == event_id,
         ),
+        select(ev.alert_id)
+        .join(WebPayloadResult, WebPayloadResult.result_id == ev.evidence_ref)
+        .where(ev.evidence_type == "web_payload_result", WebPayloadResult.event_id == event_id),
     ]
     ids = {row for stmt in refs for row in session.scalars(stmt)}
     if not ids:

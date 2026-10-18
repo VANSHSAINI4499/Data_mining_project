@@ -165,3 +165,76 @@ def test_unknown_scoring_run_is_404(login: Callable[..., LoggedIn], seeded: Sess
     resp = viewer.client.get(f"/api/v1/web-payloads/scoring-runs/{uuid.uuid4()}")
     assert resp.status_code == 404
     assert viewer.client.get("/api/v1/web-payloads/results").status_code == 404
+
+
+def test_correlation_rule_raises_alerts_from_attack_like_params(
+    login: Callable[..., LoggedIn],
+    db: Session,
+    session_factory: sessionmaker[Session],
+    trained: uuid.UUID,
+    access_log: None,
+) -> None:
+    from datetime import datetime
+
+    from app.services import correlation
+
+    rule = "web_attack_payloads_from_client"
+    start = datetime.fromisoformat("2026-10-15T00:00:00+00:00")
+    end = datetime.fromisoformat("2026-10-16T00:00:00+00:00")
+
+    # Without an active web payload model the rule has no evidence (candidates are ignored).
+    run = web_payload.start_scoring(db, CLI_ACTOR, SCOPE, trained, enqueue=False)
+    web_payload.run_scoring(session_factory, get_settings(), run.scoring_run_id)
+    summary = correlation.run_correlation(db, CLI_ACTOR, start, end, [rule])
+    assert summary["rules"][rule]["evidence_available"] == {"payloads": 0}
+
+    with session_factory() as session:
+        models_service.promote(session, CLI_ACTOR, trained)
+    summary = correlation.run_correlation(db, CLI_ACTOR, start, end, [rule])
+    report = summary["rules"][rule]
+    attack_like = sum(
+        1 for r in db.scalars(select(WebPayloadResult)) if r.is_attack_like and r.score >= 0.6
+    )
+    db.rollback()
+    assert report["evidence_available"] == {"payloads": attack_like}
+
+    viewer = login("val", Role.VIEWER)
+    alerts = viewer.client.get("/api/v1/alerts?limit=50").json()["items"]
+    mine = {
+        a["primary_entity_value"]: a for a in alerts if a["title"].startswith("Repeated attack")
+    }
+    # The two sample clients that sent attack payloads, two requests each; nobody else.
+    flagged_clients = {
+        str(ip).split("/")[0]
+        for ip, n in db.execute(
+            select(FactSecurityEvent.src_ip, func.count(func.distinct(WebPayloadResult.result_id)))
+            .join(
+                WebPayloadResult,
+                (WebPayloadResult.event_id == FactSecurityEvent.event_id)
+                & (WebPayloadResult.event_time == FactSecurityEvent.event_time),
+            )
+            .where(WebPayloadResult.is_attack_like.is_(True), WebPayloadResult.score >= 0.6)
+            .group_by(FactSecurityEvent.src_ip)
+        )
+        if n >= 2
+    }
+    db.rollback()
+    assert set(mine) == flagged_clients and flagged_clients <= {"203.0.113.50", "203.0.113.51"}
+    assert report["alerts_created"] == len(flagged_clients) >= 1
+
+    alert = viewer.client.get(f"/api/v1/alerts/{next(iter(mine.values()))['alert_id']}").json()
+    assert {e["evidence_type"] for e in alert["evidence"]} == {"web_payload_result"}
+    assert all(e["category"] == "model_output" and e["event_id"] for e in alert["evidence"])
+    assert all(e["contribution"]["predicted_class"] != "BENIGN" for e in alert["evidence"])
+    classification = alert["risk_breakdown"]["components"]["classification"]
+    assert classification["value"] > 0
+    assert classification["inputs"]["evidence_type"] == "web_payload_result"
+    assert classification["inputs"]["predicted_category"] == "WEB_ATTACK"
+    assert alert["risk_breakdown"]["rule"] == {"rule_key": rule, "version": 1}
+
+    event = viewer.client.get(f"/api/v1/events/{alert['evidence'][0]['event_id']}").json()
+    assert alert["alert_id"] in {a["alert_id"] for a in event["alerts"]}
+
+    # Re-running adds no duplicate alerts or evidence.
+    again = correlation.run_correlation(db, CLI_ACTOR, start, end, [rule])
+    assert again["rules"][rule]["alerts_created"] == 0

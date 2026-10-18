@@ -57,7 +57,38 @@ def test_default_rules_file_is_valid() -> None:
         "recon_then_attack",
         "anomaly_with_malicious_classification",
         "repeated_ids_signature",
+        "web_attack_payloads_from_client",
     }
+
+
+def test_web_payload_evidence_filters_are_allow_listed() -> None:
+    base = {
+        "key": "web_rule",
+        "name": "web rule",
+        "description": "web payload evidence",
+        "entity_type": "src_ip",
+        "window": "1h",
+        "base_severity": "medium",
+    }
+    ok = RuleDefinition.model_validate(
+        base
+        | {
+            "steps": [
+                {
+                    "id": "p",
+                    "evidence": "web_payload_result",
+                    "where": {"predicted_class": ["SQLI", "XSS"], "min_score": 0.6},
+                    "min_count": 2,
+                }
+            ]
+        }
+    )
+    assert ok.steps[0].evidence == "web_payload_result"
+    for where in ({"min_score": 1.5}, {"predicted_category": "WEB_ATTACK"}, {"param_name": "q"}):
+        with pytest.raises(ValueError):
+            RuleDefinition.model_validate(
+                base | {"steps": [{"id": "p", "evidence": "web_payload_result", "where": where}]}
+            )
 
 
 @pytest.mark.parametrize(

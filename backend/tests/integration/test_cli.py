@@ -72,7 +72,7 @@ def test_threat_intel_and_correlation_commands(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     assert cli.main(["seed-reference"]) == 0
-    assert "correlation rules: 5 created" in capsys.readouterr().out
+    assert "correlation rules: 6 created" in capsys.readouterr().out
     out = import_root / "syn"
     assert cli.main(["generate-synthetic", "--out", str(out)]) == 0
     assert cli.main(["ingest", "--source", "synthetic", str(out / "events.jsonl")]) == 0

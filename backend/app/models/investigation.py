@@ -33,7 +33,13 @@ ALERT_STATUSES = ("new", "acknowledged", "in_review", "escalated", "dismissed", 
 CASE_STATUSES = ("open", "investigating", "closed")
 DISPOSITIONS = ("confirmed_incident", "false_positive", "benign_true_positive", "inconclusive")
 VERDICTS = ("true_positive", "false_positive", "benign_unusual", "needs_more_info")
-EVIDENCE_TYPES = ("event", "classification_result", "anomaly_result", "indicator_match")
+EVIDENCE_TYPES = (
+    "event",
+    "classification_result",
+    "anomaly_result",
+    "indicator_match",
+    "web_payload_result",
+)
 FEEDBACK_TARGETS = ("event", "classification_result", "anomaly_result", "indicator_match", "alert")
 
 
