@@ -16,6 +16,7 @@ import {
   SafeText,
 } from "../components/ui";
 import { formatScore, formatTime } from "../lib/format";
+import { liveInterval } from "../lib/liveMode";
 
 interface ScoredParam {
   result_id: number;
@@ -44,11 +45,11 @@ export function ScoredHttpParamsCard({
   canScore: boolean;
 }) {
   const [attackOnly, setAttackOnly] = useState("true");
-  const results = usePaged<ScoredParam>("/web-payloads/results", {
-    from: range.from,
-    to: range.to,
-    attack_like_only: attackOnly,
-  });
+  const results = usePaged<ScoredParam>(
+    "/web-payloads/results",
+    { from: range.from, to: range.to, attack_like_only: attackOnly },
+    { refetchInterval: liveInterval() },
+  );
   const score = useApiMutation<{ from: string; to: string }, Accepted>(
     "POST",
     "/web-payloads/scoring-runs",

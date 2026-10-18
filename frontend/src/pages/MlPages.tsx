@@ -24,6 +24,7 @@ import {
 } from "../components/ui";
 import { hasRole, useSession } from "../hooks/useSession";
 import { formatNumber, formatScore, formatTime, shortId } from "../lib/format";
+import { liveInterval } from "../lib/liveMode";
 import { useTimeRange } from "../lib/timeRange";
 import { FeedbackForm } from "./FeedbackForm";
 import { ScoredHttpParamsCard } from "./ScoredHttpParamsCard";
@@ -155,7 +156,11 @@ export function ClassificationPage() {
   const session = useSession();
   const { range } = useTimeRange();
   const runs = useApi<RunRow[]>("/classification/training-runs");
-  const summary = useApi<Summary>("/classification/summary", { from: range.from, to: range.to });
+  const summary = useApi<Summary>(
+    "/classification/summary",
+    { from: range.from, to: range.to },
+    { refetchInterval: liveInterval() },
+  );
   return (
     <div className="space-y-4">
       <PageHeader title="Classification">

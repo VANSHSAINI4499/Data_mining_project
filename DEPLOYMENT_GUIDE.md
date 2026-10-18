@@ -242,3 +242,6 @@ Public datasets are downloaded manually (UNSW-NB15: <https://research.unsw.edu.a
 | `cti watermarks` | Show incremental-processing watermarks. | 8 |
 | `cti drift MODEL_ID --from T --to T` | Informational drift report (PSI, flagged-rate, prediction shift); never retrains. | 8 |
 | `cti mine-patterns --entity-type E --from T --to T [--min-support N] [--max-length L] [--max-gap-minutes M] [--min-malicious-ratio R]` | Mine candidate sequence rules for human review (never enabled automatically). | 8 |
+| `cti demo-site [--host 127.0.0.1] [--port 8800]` | Run the local demo target website (loopback only; inputs are echoed HTML-escaped and logged, never executed) and write an access log for the live demo. See [docs/DEMO_WALKTHROUGH.md](docs/DEMO_WALKTHROUGH.md). | demo |
+| `cti demo-traffic [--log F] [--count N] [--attack-ratio R] [--rate L] [--seed S]` | Append synthetic benign + attack access-log lines (RFC 5737 IPs) to the demo log; `--rate` paces lines/second. Generates log *data*; sends no network request. | demo |
+| `cti tail --log F [--source S] [--interval N] [--from-end] [--once] [--process]` | Follow a growing access log and ingest newly appended complete lines once (byte-offset tracked); `--from-end` skips existing lines, `--process` scores and correlates after each ingest. | demo |

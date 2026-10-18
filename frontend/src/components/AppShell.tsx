@@ -4,6 +4,7 @@ import { NavLink, Outlet } from "react-router";
 import type { User } from "../api/types";
 import { hasRole, useLogout } from "../hooks/useSession";
 import { getTimeDisplay, setTimeDisplay, subscribeTimeDisplay } from "../lib/format";
+import { getLiveMode, setLiveMode, subscribeLiveMode } from "../lib/liveMode";
 import { NAV_PAGES } from "../lib/navigation";
 import { LoadingSkeleton } from "./States";
 
@@ -16,6 +17,7 @@ export function AppShell({ user }: { user: User }) {
   const logout = useLogout();
   const items = NAV_PAGES.filter((item) => hasRole(user, item.minRole));
   const timeDisplay = useSyncExternalStore(subscribeTimeDisplay, getTimeDisplay);
+  const live = useSyncExternalStore(subscribeLiveMode, getLiveMode);
 
   return (
     <div className="flex h-full">
@@ -40,6 +42,10 @@ export function AppShell({ user }: { user: User }) {
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-end gap-4 border-b border-line bg-surface px-6 py-3 text-sm">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={live} onChange={(e) => setLiveMode(e.target.checked)} />
+            <span className="text-muted">Live</span>
+          </label>
           <label className="flex items-center gap-2">
             <span className="text-muted">Times shown in</span>
             <select

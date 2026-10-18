@@ -11,6 +11,7 @@ import json
 import signal
 import sys
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from types import FrameType
@@ -532,6 +533,116 @@ def cmd_watch(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_demo_site(args: argparse.Namespace) -> int:
+    import uvicorn
+
+    from app.devtools.demo_site import create_demo_app
+
+    log_path = get_settings().import_root / "demo" / "demoshop.access.log"
+    app = create_demo_app(log_path)
+    print(
+        json.dumps(
+            {
+                "serving": f"http://{args.host}:{args.port}",
+                "access_log": str(log_path),
+                "note": "local demo target; inputs are logged and echoed, never executed",
+                "next": f"cti tail --log {log_path} --process  (in another terminal)",
+            }
+        ),
+        flush=True,
+    )
+    if args.host not in ("127.0.0.1", "localhost", "::1"):
+        raise DomainError("the demo site only binds to the loopback interface")
+    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
+    return 0
+
+
+def cmd_demo_traffic(args: argparse.Namespace) -> int:
+    from app.devtools import demo_traffic
+
+    log_path = (
+        Path(args.log) if args.log else get_settings().import_root / "demo" / "demoshop.access.log"
+    )
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def append(line: str) -> None:
+        with log_path.open("a", encoding="utf-8", newline="\n") as fh:
+            fh.write(line)
+        if args.rate > 0:
+            time.sleep(1.0 / args.rate)
+
+    written = demo_traffic.generate(
+        append, count=args.count, attack_ratio=args.attack_ratio, seed=args.seed
+    )
+    print(json.dumps({"log": str(log_path), **written}), flush=True)
+    return 0
+
+
+def cmd_tail(args: argparse.Namespace) -> int:
+    """Follow a growing access log: ingest newly appended complete lines, then (optionally)
+    run incremental processing, so the dashboard updates live. Tracks a byte offset so each
+    line is imported once; re-importing identical lines is deduplicated by the pipeline."""
+    from app.services import data_quality, incremental
+    from app.services.ingestion import BatchOptions, create_cli_batch, process_batch
+
+    settings = get_settings()
+    factory = get_session_factory()
+    source_log = Path(args.log)
+    chunk_dir = settings.import_root / "demo" / "tail"
+    chunk_dir.mkdir(parents=True, exist_ok=True)
+    stop = threading.Event()
+
+    def _stop(signum: int, frame: FrameType | None) -> None:
+        stop.set()
+
+    signal.signal(signal.SIGINT, _stop)
+    signal.signal(signal.SIGTERM, _stop)
+    offset = source_log.stat().st_size if (args.from_end and source_log.is_file()) else 0
+    while not stop.is_set():
+        if source_log.is_file() and source_log.stat().st_size > offset:
+            with source_log.open("rb") as fh:
+                fh.seek(offset)
+                data = fh.read()
+            # Only whole lines; keep the trailing partial line for the next poll.
+            cut = data.rfind(b"\n") + 1
+            if cut:
+                chunk_path = chunk_dir / f"chunk_{int(time.time() * 1000)}.log"
+                chunk_path.write_bytes(data[:cut])
+                offset += cut
+                with factory() as session:
+                    batch, duplicate = create_cli_batch(
+                        session,
+                        settings,
+                        CLI_ACTOR,
+                        source_key=args.source,
+                        adapter_name=None,
+                        path=chunk_path,
+                        options=BatchOptions(),
+                    )
+                if not duplicate:
+                    outcome = process_batch(
+                        factory, settings, batch.batch_id, on_complete=data_quality.run_checks
+                    )
+                    print(
+                        json.dumps(
+                            {
+                                "ingested": outcome.records_loaded,
+                                "rejected": outcome.records_rejected,
+                                "at_offset": offset,
+                            }
+                        ),
+                        flush=True,
+                    )
+                    if args.process:
+                        for summary in incremental.run_all(factory, settings, CLI_ACTOR):
+                            if summary.get("status") == "processed":
+                                print(json.dumps(summary, default=str), flush=True)
+        if args.once:
+            break
+        stop.wait(args.interval)
+    return 0
+
+
 def cmd_drift(args: argparse.Namespace) -> int:
     import uuid
 
@@ -752,6 +863,32 @@ def build_parser() -> argparse.ArgumentParser:
         help="run incremental processing after new files are imported",
     )
     p.set_defaults(func=cmd_watch)
+
+    p = sub.add_parser("demo-site", help="run the local demo target website (loopback only)")
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--port", type=int, default=8800)
+    p.set_defaults(func=cmd_demo_site)
+
+    p = sub.add_parser(
+        "demo-traffic", help="write synthetic benign+attack access-log lines for the demo"
+    )
+    p.add_argument("--log", help="access log to append to (default: the demo site's log)")
+    p.add_argument("--count", type=int, default=60, help="number of log lines to write")
+    p.add_argument("--attack-ratio", type=float, default=0.25, help="fraction that are attacks")
+    p.add_argument("--rate", type=float, default=0.0, help="lines/sec (0 = as fast as possible)")
+    p.add_argument("--seed", type=int, default=42)
+    p.set_defaults(func=cmd_demo_traffic)
+
+    p = sub.add_parser("tail", help="follow a growing access log and ingest new lines live")
+    p.add_argument("--log", required=True, help="access-log file to follow")
+    p.add_argument("--source", default="web-server")
+    p.add_argument("--interval", type=float, default=3.0, help="seconds between polls")
+    p.add_argument("--from-end", action="store_true", help="skip lines already in the file")
+    p.add_argument("--once", action="store_true", help="process current content once, then exit")
+    p.add_argument(
+        "--process", action="store_true", help="run scoring and correlation after each ingest"
+    )
+    p.set_defaults(func=cmd_tail)
 
     p = sub.add_parser("drift", help="compute a drift report for a model (informational)")
     p.add_argument("model_id")

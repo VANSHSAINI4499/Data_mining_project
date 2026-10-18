@@ -23,6 +23,7 @@ import {
 } from "../components/ui";
 import { hasRole, useSession } from "../hooks/useSession";
 import { formatNumber, formatTime, shortId } from "../lib/format";
+import { liveInterval } from "../lib/liveMode";
 import { useSearchParam, useTimeRange } from "../lib/timeRange";
 import { FeedbackForm } from "./FeedbackForm";
 
@@ -83,13 +84,11 @@ export function AlertsPage() {
   const { range } = useTimeRange();
   const [status, setStatus] = useSearchParam("status", "");
   const [sort, setSort] = useSearchParam("sort", "risk_score");
-  const alerts = usePaged<AlertRow>("/alerts", {
-    from: range.from,
-    to: range.to,
-    status: status || undefined,
-    sort,
-    limit: 100,
-  });
+  const alerts = usePaged<AlertRow>(
+    "/alerts",
+    { from: range.from, to: range.to, status: status || undefined, sort, limit: 100 },
+    { refetchInterval: liveInterval() },
+  );
   return (
     <div className="space-y-4">
       <PageHeader title="Alerts">

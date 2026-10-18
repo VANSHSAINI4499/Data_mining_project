@@ -42,8 +42,13 @@ export function useApi<T>(
   });
 }
 
-/** Cursor-paginated list ("Load more"). */
-export function usePaged<T>(path: string, params: Params = {}) {
+/** Cursor-paginated list ("Load more"). `refetchInterval` (ms) re-fetches the first page on a
+ * timer, so a list stays current during live ingestion; omit it for a static list. */
+export function usePaged<T>(
+  path: string,
+  params: Params = {},
+  options: { refetchInterval?: number | false } = {},
+) {
   return useInfiniteQuery<Page<T>, ApiError>({
     queryKey: [path, params, "paged"],
     queryFn: ({ signal, pageParam }) =>
@@ -53,6 +58,7 @@ export function usePaged<T>(path: string, params: Params = {}) {
       ),
     initialPageParam: undefined,
     getNextPageParam: (last) => last.next_cursor ?? undefined,
+    refetchInterval: options.refetchInterval,
   });
 }
 
