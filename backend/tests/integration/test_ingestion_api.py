@@ -241,7 +241,10 @@ def test_event_detail_raw_and_provenance(
     }
     assert detail["threat_intel"] == {"matches": [], "attack_techniques": []}
     assert detail["alerts"] == [] and detail["analyst"] == {"feedback": []}
-    assert detail["model_outputs"] == {"classifications": []}  # nothing scored yet
+    assert detail["model_outputs"] == {
+        "classifications": [],
+        "web_payload_classifications": [],
+    }  # nothing scored yet
     assert detail["observed"]["user_name"] == "Alice"
     prov = detail["provenance"]
     assert prov["batch_id"] == loaded and prov["record_number"] == 7

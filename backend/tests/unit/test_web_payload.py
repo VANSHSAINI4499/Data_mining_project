@@ -126,3 +126,12 @@ def test_training_is_reproducible() -> None:
 def test_training_rejects_empty_data() -> None:
     with pytest.raises(TrainingError):
         wp.train([], [])
+
+
+def test_stored_query_params_shape_is_checked_before_scoring() -> None:
+    from app.services.web_payload import _param_pairs
+
+    assert _param_pairs([["q", "1' or 1=1"], ["empty", ""]]) == [("q", "1' or 1=1"), ("empty", "")]
+    assert _param_pairs([]) == []
+    for bad in (None, "q=1", {"q": "1"}, [["q"]], [["q", 1]], [["a", "b", "c"]]):
+        assert _param_pairs(bad) is None

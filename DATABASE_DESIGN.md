@@ -11,14 +11,14 @@ Field-level definitions live in [DATA_DICTIONARY.md](DATA_DICTIONARY.md); this f
 | Raw (landing) | `ingestion_batch`, `raw_record`, `rejected_record` | Append-only (status columns on batch only). |
 | Warehouse — dimensions | `dim_*` | Reference data; `dim_asset` is SCD Type 2. |
 | Warehouse — facts | `fact_security_event`, `event_ground_truth` | Append-only; never updated after load except lineage-safe enrichment keys. |
-| Derived / model outputs | `classification_result`, `anomaly_result`, `indicator_match` | Append-only per run. |
+| Derived / model outputs | `classification_result`, `web_payload_result`, `anomaly_result`, `indicator_match` | Append-only per run. |
 | Threat intel & ATT&CK | `ti_*`, `attack_*` | Versioned updates. |
 | ML registry | `ml_model`, `ml_training_run`, `ml_scoring_run` | Status transitions only. |
 | Investigation | `correlation_rule`, `alert`, `alert_evidence`, `incident_case`, `case_alert`, `case_timeline_entry`, `analyst_feedback` | Status transitions; feedback and timeline append-only. |
 | Operations | `app_user`, `auth_session`, `audit_log`, `job`, `processing_watermark`, `data_quality_result` | `audit_log` append-only. |
 
 - **Dimensional model (star schema):** `fact_security_event` is the central fact at the grain of **one normalised security event** (one flow, one IDS alert, one authentication attempt, one endpoint event). It references `dim_date`, `dim_source`, `dim_asset` (twice: source and destination), and via `event_ground_truth`/`classification_result` the `dim_attack_category` dimension.
-- **Facts vs. predictions vs. conclusions** are stored in separate tables: observed data in `fact_security_event`; dataset labels in `event_ground_truth`; model outputs in `classification_result`/`anomaly_result`; hypotheses in `alert`; analyst conclusions in `analyst_feedback` and `incident_case.disposition`.
+- **Facts vs. predictions vs. conclusions** are stored in separate tables: observed data in `fact_security_event`; dataset labels in `event_ground_truth`; model outputs in `classification_result`/`web_payload_result`/`anomaly_result`; hypotheses in `alert`; analyst conclusions in `analyst_feedback` and `incident_case.disposition`.
 
 ## 2. Conventions
 
@@ -136,6 +136,8 @@ PK `(event_id, event_time)` FK → `fact_security_event`; `label_raw text NOT NU
 
 **`classification_result`** — `result_id bigint PK`, `event_id`, `event_time` (FK → event), `model_id` FK, `scoring_run_id` FK, `predicted_category_id` FK, `predicted_score real` (classifier vote fraction for the predicted class; **not calibrated**), `class_scores jsonb`, `scored_at`. Unique `(event_id, event_time, model_id)`.
 
+**`web_payload_result`** — predictions of the web payload model (`web_attack_classifier`, task `web_payload_classification`) for the decoded query parameters of `http` events: `result_id bigint PK`, `event_id`, `event_time` (FK → event, cascade), `model_id` FK, `scoring_run_id` FK, `param_index smallint` (position in the event's `attributes.query_params`), `param_name`, `predicted_class` (`BENIGN`, `SQLI`, `XSS`, `PATH_TRAVERSAL`, `CMDI` — the model's own classes, not `dim_attack_category` codes), `is_attack_like boolean`, `score double precision` and `score_kind` (logistic-regression probability or SVM decision score; **not calibrated**), `class_scores jsonb`, `truncated boolean`, `scored_at`. Unique `(event_id, event_time, model_id, param_index)`, so re-scoring is idempotent. The parameter **value is not copied**: it is read from the event (observed fact). Added by migration `4e1ff4ad3cf5`.
+
 **`anomaly_result`** — `result_id bigint PK`, `model_id` FK, `scoring_run_id` FK, `method` (`isolation_forest`, `robust_zscore`), `entity_type` (`host`, `account`, `src_ip`), `entity_value`, `window_start`, `window_end`, `window_size` (interval), `anomaly_score double precision`, `score_percentile real`, `threshold double precision`, `is_flagged boolean`, `feature_snapshot jsonb`, `baseline_snapshot jsonb` NULL, `top_deviations jsonb`, `scored_at`. Unique `(model_id, entity_type, entity_value, window_start)`.
 
 ### 3.6 Operations and security
@@ -177,6 +179,8 @@ erDiagram
     ml_model ||--o{ ml_scoring_run : runs
     ml_scoring_run ||--o{ classification_result : writes
     ml_scoring_run ||--o{ anomaly_result : writes
+    ml_scoring_run ||--o{ web_payload_result : writes
+    fact_security_event ||--o{ web_payload_result : "query params scored"
     fact_security_event ||--o{ classification_result : scored
     dim_attack_category ||--o{ classification_result : predicted
     ti_feed ||--o{ ti_feed_run : syncs

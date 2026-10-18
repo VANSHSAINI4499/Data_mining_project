@@ -16,7 +16,7 @@ from app.ingestion.normalize import parse_ip
 from app.repositories import events as repo
 from app.repositories import ml as ml_repo
 from app.repositories.events import EventFilters
-from app.services import classification, investigations, threat_intel
+from app.services import classification, investigations, threat_intel, web_payload
 
 __all__ = ["EventFilters"]
 
@@ -177,6 +177,10 @@ def detail(session: Session, event_id: int, event_time: datetime | None) -> dict
             # Model outputs are predictions, not observations; scores are uncalibrated.
             "model_outputs": {
                 "classifications": classification.event_classifications(
+                    session, event.event_id, event.event_time
+                ),
+                # Per query parameter; a prediction about a value, not about the request.
+                "web_payload_classifications": web_payload.event_results(
                     session, event.event_id, event.event_time
                 ),
             },

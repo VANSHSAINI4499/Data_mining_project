@@ -1,4 +1,7 @@
-"""ML jobs: classifier training and scoring, and drift reports (anomaly jobs: anomaly.py)."""
+"""ML jobs: classifier training and scoring, web payload scoring, drift reports.
+
+Anomaly jobs live in anomaly.py.
+"""
 
 from __future__ import annotations
 
@@ -8,7 +11,7 @@ from typing import Any
 
 from app.core.config import get_settings
 from app.jobs.runtime import JobContext
-from app.services import classification, drift
+from app.services import classification, drift, web_payload
 from app.services.actors import SYSTEM_ACTOR
 
 
@@ -30,6 +33,16 @@ def run_score_classifier(ctx: JobContext) -> dict[str, Any]:
     run = classification.run_scoring(
         ctx.session_factory, get_settings(), run_id, ctx.report_progress
     )
+    return {
+        "scoring_run_id": str(run.scoring_run_id),
+        "rows_scored": run.rows_scored,
+        "rows_skipped": run.rows_skipped,
+    }
+
+
+def run_score_web_payloads(ctx: JobContext) -> dict[str, Any]:
+    run_id = uuid.UUID(str(ctx.params["scoring_run_id"]))
+    run = web_payload.run_scoring(ctx.session_factory, get_settings(), run_id, ctx.report_progress)
     return {
         "scoring_run_id": str(run.scoring_run_id),
         "rows_scored": run.rows_scored,

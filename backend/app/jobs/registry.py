@@ -12,7 +12,12 @@ from app.jobs.investigation import (
     run_ti_match,
     run_ti_sync,
 )
-from app.jobs.ml import run_drift, run_score_classifier, run_train_classifier
+from app.jobs.ml import (
+    run_drift,
+    run_score_classifier,
+    run_score_web_payloads,
+    run_train_classifier,
+)
 from app.jobs.runtime import JobHandler
 
 HANDLERS: dict[str, JobHandler] = {
@@ -22,6 +27,7 @@ HANDLERS: dict[str, JobHandler] = {
     "ml.score_classifier": run_score_classifier,
     "ml.train_anomaly": run_train_anomaly,
     "ml.score_anomaly": run_score_anomaly,
+    "ml.score_web_payloads": run_score_web_payloads,
     "ml.drift": run_drift,
     "ti.import": run_ti_import,
     "ti.match": run_ti_match,

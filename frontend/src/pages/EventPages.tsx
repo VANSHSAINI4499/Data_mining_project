@@ -191,6 +191,16 @@ interface Classification {
   scored_at: string;
 }
 
+interface WebPayloadPrediction {
+  model: { model_id: string; name: string; version: number; status: string };
+  param_index: number;
+  param_name: string;
+  predicted_class: string;
+  is_attack_like: boolean;
+  score: number;
+  scored_at: string;
+}
+
 interface Match {
   match_id: number;
   indicator_id: number;
@@ -224,7 +234,10 @@ interface EventDetail {
     mapping_status: string;
     label_origin: string;
   } | null;
-  model_outputs: { classifications: Classification[] };
+  model_outputs: {
+    classifications: Classification[];
+    web_payload_classifications?: WebPayloadPrediction[];
+  };
   threat_intel: {
     matches: Match[];
     attack_techniques: { technique_id: string; name?: string; via: string; category?: string }[];
@@ -365,7 +378,8 @@ export function EventDetailPage() {
           )}
         </Card>
         <Card title="Model outputs" actions={<ProvenanceTag kind="model_output" />}>
-          {d.model_outputs.classifications.length === 0 ? (
+          {d.model_outputs.classifications.length === 0 &&
+          (d.model_outputs.web_payload_classifications ?? []).length === 0 ? (
             <p className="text-sm text-muted">No model has scored this event.</p>
           ) : (
             <ul className="space-y-2 text-sm">
@@ -379,6 +393,21 @@ export function EventDetailPage() {
                   <StatusBadge status={c.model.status} />
                   <p className="text-xs text-muted">
                     Uncalibrated score, not a probability. Scored {formatTime(c.scored_at)}.
+                  </p>
+                </li>
+              ))}
+              {(d.model_outputs.web_payload_classifications ?? []).map((w) => (
+                <li key={`${w.model.model_id}-${w.param_index}`}>
+                  Query parameter <SafeText value={w.param_name} max={40} />:{" "}
+                  <Badge tone={w.is_attack_like ? "warn" : "ok"}>{w.predicted_class}</Badge> score{" "}
+                  {formatScore(w.score)} from{" "}
+                  <Link className="text-accent" to={`/models/${w.model.model_id}`}>
+                    {w.model.name} v{w.model.version}
+                  </Link>{" "}
+                  <StatusBadge status={w.model.status} />
+                  <p className="text-xs text-muted">
+                    A prediction about this parameter value only, not about the request. Scores are
+                    not probabilities. Scored {formatTime(w.scored_at)}.
                   </p>
                 </li>
               ))}

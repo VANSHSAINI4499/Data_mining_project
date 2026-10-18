@@ -84,6 +84,7 @@ export const defaultHandlers = [
     }),
   ),
   http.get(`${API}/events`, () => HttpResponse.json(emptyPage)),
+  http.get(`${API}/web-payloads/results`, () => HttpResponse.json(emptyPage)),
   http.get(`${API}/auth/me`, () =>
     problemResponse(problem(401, "Authentication required", "Authentication required")),
   ),

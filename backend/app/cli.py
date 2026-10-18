@@ -203,6 +203,8 @@ def cmd_score(args: argparse.Namespace) -> int:
 
     if args.task == "anomaly":
         return _score_anomaly(args)
+    if args.task == "web-payload":
+        return _score_web_payload(args)
     scope: dict[str, object] = {}
     if args.batch_id:
         scope["batch_ids"] = args.batch_id
@@ -220,6 +222,36 @@ def cmd_score(args: argparse.Namespace) -> int:
                 "scoring_run_id": str(done.scoring_run_id),
                 "rows_scored": done.rows_scored,
                 "rows_skipped": done.rows_skipped,
+            }
+        )
+    )
+    return 0
+
+
+def _score_web_payload(args: argparse.Namespace) -> int:
+    import uuid
+
+    from app.services import web_payload
+
+    scope: dict[str, object] = {}
+    if args.batch_id:
+        scope["batch_ids"] = args.batch_id
+    if args.from_:
+        scope["from"] = args.from_
+    if args.to:
+        scope["to"] = args.to
+    factory = get_session_factory()
+    model_id = uuid.UUID(args.model_id) if args.model_id else None
+    with factory() as session:
+        run = web_payload.start_scoring(session, CLI_ACTOR, scope, model_id, enqueue=False)
+    done = web_payload.run_scoring(factory, get_settings(), run.scoring_run_id)
+    print(
+        json.dumps(
+            {
+                "scoring_run_id": str(done.scoring_run_id),
+                "evaluation_only": done.evaluation_only,
+                "parameters_scored": done.rows_scored,
+                "details": done.rows_skipped,
             }
         )
     )
@@ -611,11 +643,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_train)
 
     p = sub.add_parser("score", help="score events with the active model (inline)")
-    p.add_argument("task", choices=["classifier", "anomaly"])
+    p.add_argument("task", choices=["classifier", "anomaly", "web-payload"])
     p.add_argument("--batch-id", action="append")
     p.add_argument("--from", dest="from_")
     p.add_argument("--to")
-    p.add_argument("--model-id", help="anomaly: score with this model (default: active --name)")
+    p.add_argument(
+        "--model-id",
+        help="anomaly / web-payload: score with this model (default: the active model)",
+    )
     p.add_argument("--name", help="anomaly: registry name of the active model to use")
     p.set_defaults(func=cmd_score)
 

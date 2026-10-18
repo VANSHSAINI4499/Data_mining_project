@@ -171,6 +171,48 @@ class ClassificationResult(Base):
     )
 
 
+class WebPayloadResult(Base):
+    """One web payload model prediction for one decoded query parameter of an HTTP event.
+
+    The parameter value itself stays in the event's ``attributes.query_params`` (observed fact);
+    this row holds only the prediction. Scores are uncalibrated (see ``score_kind``).
+    """
+
+    __tablename__ = "web_payload_result"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["event_id", "event_time"],
+            ["fact_security_event.event_id", "fact_security_event.event_time"],
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint("event_id", "event_time", "model_id", "param_index"),
+        Index(None, "model_id", "is_attack_like", "event_time"),
+        Index(None, "event_id", "event_time"),
+        CheckConstraint("param_index >= 0", name="param_index"),
+    )
+
+    result_id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    event_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    event_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    model_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ml_model.model_id"), nullable=False
+    )
+    scoring_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ml_scoring_run.scoring_run_id"), nullable=False
+    )
+    param_index: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    param_name: Mapped[str] = mapped_column(Text, nullable=False)
+    predicted_class: Mapped[str] = mapped_column(Text, nullable=False)
+    is_attack_like: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    score: Mapped[float] = mapped_column(Double, nullable=False)
+    score_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    class_scores: Mapped[dict[str, float]] = mapped_column(JSONB, nullable=False)
+    truncated: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    scored_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class AnomalyResult(Base):
     """Entity-window anomaly scores (ANOMALY_DETECTION.md). Created in Phase 4."""
 

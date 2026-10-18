@@ -468,3 +468,93 @@ describe("web payload classifier card", () => {
     expect(screen.queryByLabelText("Parameter values, one per line")).not.toBeInTheDocument();
   });
 });
+
+describe("scored HTTP parameters card", () => {
+  const scored = {
+    result_id: 7,
+    event_id: "4021",
+    event_time: "2026-10-15T10:03:00Z",
+    param_index: 0,
+    param_name: "file",
+    param_value: "../../../etc/passwd",
+    predicted_class: "PATH_TRAVERSAL",
+    is_attack_like: true,
+    score: 0.999,
+    score_kind: "logistic_regression_probability_uncalibrated",
+    truncated: false,
+    src_ip: "198.51.100.23",
+    url: "/download?file=..%2F..%2F..%2Fetc%2Fpasswd",
+    score_is_calibrated: false,
+  };
+
+  function classificationBasics() {
+    server.use(
+      http.get(`${API}/classification/summary`, () =>
+        problemResponse(problem(404, "Not found", "no active model")),
+      ),
+      http.get(`${API}/classification/training-runs`, () => HttpResponse.json([])),
+    );
+  }
+
+  it("shows stored predictions with the observed value and an event link (viewer)", async () => {
+    loggedInAs("viewer");
+    classificationBasics();
+    let query = "";
+    server.use(
+      http.get(`${API}/web-payloads/results`, ({ request }) => {
+        query = new URL(request.url).search;
+        return HttpResponse.json({ ...emptyPage, items: [scored], note: "x" });
+      }),
+    );
+    renderApp("/classification");
+    const table = await screen.findByRole("table", { name: "Scored HTTP parameters" });
+    expect(within(table).getByText("PATH_TRAVERSAL")).toBeInTheDocument();
+    expect(within(table).getByText("../../../etc/passwd")).toBeInTheDocument();
+    expect(within(table).getByRole("link", { name: "open" })).toHaveAttribute(
+      "href",
+      "/events/4021",
+    );
+    expect(query).toContain("attack_like_only=true");
+    expect(screen.getByText(/It is not a confirmed attack/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Score HTTP events in this range" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("lets analysts queue scoring for the selected range", async () => {
+    loggedInAs("analyst");
+    classificationBasics();
+    let sent: unknown = null;
+    server.use(
+      http.get(`${API}/web-payloads/results`, () => HttpResponse.json({ ...emptyPage, note: "x" })),
+      http.post(`${API}/web-payloads/scoring-runs`, async ({ request }) => {
+        sent = await request.json();
+        return HttpResponse.json(
+          { id: "r1", job_id: null, status: "queued", links: {} },
+          { status: 202 },
+        );
+      }),
+    );
+    renderApp("/classification");
+    expect(await screen.findByText("No scored parameters in this range")).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Score HTTP events in this range" }));
+    await waitFor(() => expect(sent).not.toBeNull());
+    expect(Object.keys(sent as object).sort()).toEqual(["from", "to"]);
+  });
+
+  it("shows an honest empty state when no web payload model is active", async () => {
+    loggedInAs("analyst");
+    classificationBasics();
+    server.use(
+      http.get(`${API}/web-payloads/results`, () =>
+        problemResponse(problem(404, "Not found", "no active model")),
+      ),
+    );
+    renderApp("/classification");
+    expect(await screen.findByText("No active web payload model")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Score HTTP events in this range" }),
+    ).not.toBeInTheDocument();
+  });
+});

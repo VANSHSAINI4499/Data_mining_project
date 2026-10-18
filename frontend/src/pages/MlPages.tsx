@@ -26,6 +26,7 @@ import { hasRole, useSession } from "../hooks/useSession";
 import { formatNumber, formatScore, formatTime, shortId } from "../lib/format";
 import { useTimeRange } from "../lib/timeRange";
 import { FeedbackForm } from "./FeedbackForm";
+import { ScoredHttpParamsCard } from "./ScoredHttpParamsCard";
 import { WebPayloadCard } from "./WebPayloadCard";
 
 // --- classification ------------------------------------------------------------------------------
@@ -219,6 +220,7 @@ export function ClassificationPage() {
           ]}
         />
       </Card>
+      <ScoredHttpParamsCard range={range} canScore={hasRole(session.data?.user, "analyst")} />
       {hasRole(session.data?.user, "analyst") && <WebPayloadCard />}
       {hasRole(session.data?.user, "admin") && <TrainForm />}
     </div>

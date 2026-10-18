@@ -89,6 +89,10 @@ uv run --project backend cti train web-payload --dataset-dir data/external/httpp
 uv run --project backend cti models promote <MODEL_ID>                                   # make it active (admin decision)
 uv run --project backend cti classify-payload "1' or '1'='1' --" "calle mayor 5"           # active model
 uv run --project backend cti classify-payload --model-id <MODEL_ID> "<img src=x onerror=alert(1)>"
+uv run --project backend cti ingest --source web-server data/samples/web-access/access_sample.log
+uv run --project backend cti score web-payload --from 2026-10-15T00:00:00Z --to 2026-10-16T00:00:00Z
 ```
 
-API (analyst): `POST /api/v1/web-payloads/classify` with `{"payloads": ["…", …]}` (1–100 values, ≤ 8,192 chars each). Dashboard: **Classification → Web payload classifier**.
+**Scoring stored access logs.** `cti score web-payload` (or `POST /api/v1/web-payloads/scoring-runs`, job `ml.score_web_payloads`) runs the model on every non-empty decoded query parameter of `http` events in scope and stores one row per parameter in `web_payload_result`. It still classifies **values only**: the URL path, method, status, user agent, and request bodies are not used (POST bodies are not in access logs at all). A flagged value is a hypothesis for an analyst, not a detected attack; the results are not yet used by correlation rules or risk scores. Measured on the 12-line synthetic sample log (dev database, 2026-10-18): 11 HTTP events, 7 parameters scored, 4 events with an attack-like value; the four planted payloads were classified `SQLI`, `XSS`, `PATH_TRAVERSAL`, `CMDI` and the three ordinary values `BENIGN`. That sample was written for this project and is not an accuracy measurement.
+
+API (analyst): `POST /api/v1/web-payloads/classify` with `{"payloads": ["…", …]}` (1–100 values, ≤ 8,192 chars each). Dashboard: **Classification → Web payload classifier** (ad-hoc values) and **Classification → HTTP query parameters scored by the web payload model** (stored results; analysts can queue scoring for the selected range). Event detail shows per-parameter predictions under *Model outputs*.

@@ -24,6 +24,7 @@ from app.models.ml import (
     MlModel,
     MlScoringRun,
     MlTrainingRun,
+    WebPayloadResult,
 )
 from app.models.ops import AppUser, AuditLog, AuthSession, DimDate, Job
 from app.models.warehouse import (
@@ -76,4 +77,5 @@ __all__ = [
     "TiFeedRun",
     "TiIndicator",
     "TiIndicatorVersion",
+    "WebPayloadResult",
 ]
