@@ -71,6 +71,11 @@ def enqueue_in_transaction(
     return job
 
 
+def has_open_job(session: Session, job_type: str) -> bool:
+    """Inside the caller's transaction."""
+    return jobs_repo.has_open_job(session, job_type)
+
+
 def enqueue(
     session: Session, actor: Actor, job_type: str, params: dict[str, Any], *, max_attempts: int = 3
 ) -> Job:

@@ -11,7 +11,13 @@ export function FeedbackForm({
   targetId,
   invalidate,
 }: {
-  targetType: "event" | "classification_result" | "anomaly_result" | "indicator_match" | "alert";
+  targetType:
+    | "event"
+    | "classification_result"
+    | "anomaly_result"
+    | "indicator_match"
+    | "alert"
+    | "web_payload_result";
   targetId: string;
   invalidate: string[];
 }) {

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import Sequence
 from datetime import datetime
@@ -18,6 +19,7 @@ from app.models import (
     DimSource,
     FactSecurityEvent,
     IngestionBatch,
+    RawRecord,
     RejectedRecord,
 )
 
@@ -126,9 +128,37 @@ def ensure_partitions(session: Session, start: datetime, end: datetime) -> int:
     return int(session.scalar(select(func.ensure_event_partitions(start, end))) or 0)
 
 
+def set_lock_timeout(session: Session, milliseconds: int) -> None:
+    """For the current transaction only."""
+    session.execute(text(f"SET LOCAL lock_timeout = {int(milliseconds)}"))
+
+
+def use_generic_plans(session: Session) -> None:
+    """For the current transaction only: reuse generic plans for cached statements.
+
+    Every row inserted into a table that references ``fact_security_event`` (e.g.
+    ``event_ground_truth``) fires a foreign-key check query. With the default plan cache
+    mode PostgreSQL re-plans that query per row, and planning against the monthly
+    partitions costs ~0.45 ms per row; a generic plan prunes partitions at run time instead
+    (measured on 40k label rows: 20.2 s vs 2.4 s, docs/PERFORMANCE.md).
+    """
+    session.execute(text("SET LOCAL plan_cache_mode = force_generic_plan"))
+
+
 # Bulk loading uses COPY into a temporary table followed by INSERT ... SELECT, which avoids
 # building very large multi-row INSERT statements (measured in Phase 7, NFR-03).
 JSON_COLUMNS = frozenset({"raw_payload", "attributes"})
+
+
+class JsonText(str):
+    """A JSON document already serialised (with ``json.dumps``, as psycopg's ``Jsonb`` does).
+
+    Callers serialise on the thread that prepares rows, so the COPY writer only streams text.
+    """
+
+
+def json_text(value: Any) -> JsonText:
+    return JsonText(json.dumps(value))
 
 
 def _copy_rows(
@@ -142,8 +172,13 @@ def _copy_rows(
     with conn.cursor() as cur, cur.copy(statement) as copy:
         for row in rows:
             copy.write_row(
-                [Jsonb(row.get(c)) if c in JSON_COLUMNS else row.get(c) for c in columns]
+                [_json_value(row.get(c)) if c in JSON_COLUMNS else row.get(c) for c in columns]
             )
+
+
+def _json_value(value: Any) -> Any:
+    # COPY text format: PostgreSQL parses the text into the jsonb column.
+    return str.__str__(value) if isinstance(value, JsonText) else Jsonb(value)
 
 
 def _cols(columns: list[str]) -> str:
@@ -176,21 +211,27 @@ RAW_COLUMNS = [
 
 
 def insert_raw_records(session: Session, rows: list[dict[str, Any]]) -> list[int]:
-    """Insert raw records; returns their IDs in the order of ``rows``."""
+    """Insert raw records of one batch; returns their IDs in the order of ``rows``.
+
+    Raw records never conflict (a batch's record numbers are unique and each chunk is new),
+    so they are COPYed straight into the table and their generated IDs read back through
+    the ``(batch_id, record_number)`` unique index.
+    """
     if not rows:
         return []
-    _temp_like(session, "tmp_raw_record", "raw_record", RAW_COLUMNS)
-    _copy_rows(session, "tmp_raw_record", RAW_COLUMNS, rows)
-    cols = _cols(RAW_COLUMNS)
+    batch_ids = {r["batch_id"] for r in rows}
+    if len(batch_ids) != 1:
+        raise ValueError("raw records of exactly one batch expected")
+    _copy_rows(session, "raw_record", RAW_COLUMNS, rows)
+    numbers = [r["record_number"] for r in rows]
     result = session.execute(
-        text(
-            f"INSERT INTO raw_record ({cols}) SELECT {cols} FROM tmp_raw_record "  # noqa: S608
-            "RETURNING raw_record_id, record_number"
+        select(RawRecord.record_number, RawRecord.raw_record_id).where(
+            RawRecord.batch_id == batch_ids.pop(),
+            RawRecord.record_number.between(min(numbers), max(numbers)),
         )
     )
-    by_number = {number: rid for rid, number in result}
-    session.execute(text("DROP TABLE tmp_raw_record"))
-    return [by_number[r["record_number"]] for r in rows]
+    by_number = {number: rid for number, rid in result}
+    return [by_number[n] for n in numbers]
 
 
 def insert_events(session: Session, rows: list[dict[str, Any]]) -> list[tuple[int, datetime, str]]:

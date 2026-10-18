@@ -676,7 +676,7 @@ export function AuditPage() {
           onLoadMore={() => void records.fetchNextPage()}
           loadingMore={records.isFetchingNextPage}
           columns={[
-            { key: "t", header: "Time (UTC)", render: (r) => formatTime(r.occurred_at) },
+            { key: "t", header: "Time", render: (r) => formatTime(r.occurred_at) },
             { key: "a", header: "Actor", render: (r) => `${r.actor ?? "—"} (${r.actor_type})` },
             { key: "act", header: "Action", render: (r) => r.action },
             {

@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, type ReactElement } from "react";
+import { lazy, useEffect, type ComponentType } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router";
 
 import { onUnauthorized } from "./api/client";
@@ -8,29 +8,48 @@ import { PlannedFeature } from "./components/PlannedFeature";
 import { ErrorState, LoadingSkeleton } from "./components/States";
 import { hasRole, SESSION_KEY, useSession } from "./hooks/useSession";
 import { NAV_PAGES, PLANNED_PATHS } from "./lib/navigation";
-import { AuditPage, DataQualityPage, SettingsPage } from "./pages/AdminPages";
-import { EventDetailPage, EventsPage } from "./pages/EventPages";
-import { BatchDetailPage, IngestionPage } from "./pages/IngestionPages";
-import { AlertDetailPage, AlertsPage, CaseDetailPage, CasesPage } from "./pages/InvestigationPages";
 import { LoginPage } from "./pages/LoginPage";
-import {
-  AnomaliesPage,
-  AnomalyDetailPage,
-  ClassificationPage,
-  ModelDetailPage,
-  ModelsPage,
-  RunDetailPage,
-} from "./pages/MlPages";
-import { OverviewPage } from "./pages/OverviewPage";
 import { ForbiddenPage, NotFoundPage } from "./pages/StatusPages";
-import { IndicatorDetailPage, ThreatIntelPage } from "./pages/ThreatIntelPages";
 
 interface FromState {
   from?: string;
 }
 
+/** Loads one named page export on first use; pages of a module share a chunk. */
+function page<M extends Record<string, unknown>>(load: () => Promise<M>, name: keyof M) {
+  return lazy(async () => ({ default: (await load())[name] as ComponentType }));
+}
+
+const admin = () => import("./pages/AdminPages");
+const events = () => import("./pages/EventPages");
+const ingestion = () => import("./pages/IngestionPages");
+const investigations = () => import("./pages/InvestigationPages");
+const ml = () => import("./pages/MlPages");
+const threatIntel = () => import("./pages/ThreatIntelPages");
+
+const OverviewPage = page(() => import("./pages/OverviewPage"), "OverviewPage");
+const IngestionPage = page(ingestion, "IngestionPage");
+const BatchDetailPage = page(ingestion, "BatchDetailPage");
+const EventsPage = page(events, "EventsPage");
+const EventDetailPage = page(events, "EventDetailPage");
+const ClassificationPage = page(ml, "ClassificationPage");
+const RunDetailPage = page(ml, "RunDetailPage");
+const AnomaliesPage = page(ml, "AnomaliesPage");
+const AnomalyDetailPage = page(ml, "AnomalyDetailPage");
+const ModelsPage = page(ml, "ModelsPage");
+const ModelDetailPage = page(ml, "ModelDetailPage");
+const ThreatIntelPage = page(threatIntel, "ThreatIntelPage");
+const IndicatorDetailPage = page(threatIntel, "IndicatorDetailPage");
+const AlertsPage = page(investigations, "AlertsPage");
+const AlertDetailPage = page(investigations, "AlertDetailPage");
+const CasesPage = page(investigations, "CasesPage");
+const CaseDetailPage = page(investigations, "CaseDetailPage");
+const DataQualityPage = page(admin, "DataQualityPage");
+const SettingsPage = page(admin, "SettingsPage");
+const AuditPage = page(admin, "AuditPage");
+
 /** Page components by route path (FRONTEND_SPECIFICATION.md §3). */
-const PAGE_ELEMENTS: Record<string, () => ReactElement> = {
+const PAGE_ELEMENTS: Record<string, ComponentType> = {
   "/ingestion": IngestionPage,
   "/ingestion/batches/:batchId": BatchDetailPage,
   "/events": EventsPage,

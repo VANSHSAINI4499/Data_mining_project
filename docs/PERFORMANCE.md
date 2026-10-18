@@ -23,8 +23,26 @@ Command: `cti ingest --source synthetic data/bench/nfr03b/events.jsonl` (inline,
 |---|---|---:|---:|---:|
 | 1 | multi-row `INSERT … RETURNING` (Phase 2 implementation) | 180,792 | 299.3 s | **604 rows/s** |
 | 2 | `COPY` into a temporary table + `INSERT … SELECT … ON CONFLICT` (Phase 7) | 180,784 | 201.1 s | **899 rows/s** |
+| 3 | 2026-10-18 changes below, defaults (`CTI_INGEST_CHUNK_SIZE=10000`, `CTI_INGEST_WRITERS=2`) — three consecutive runs | 180,784 | 78.7 / 92.6 / 84.6 s | **2,297 / 1,952 / 2,137 rows/s** (median 2,137) |
 
-**Result: the target of ≥ 2,000 rows/s is not met.** Profiling a 21k-row run (`python -m cProfile`) after the COPY change shows the remaining time split roughly between waiting on the database (inserts into the partitioned, indexed fact table and the JSONB raw-record table) and per-row Python work (`normalize_event`, raw-record escaping, fingerprinting). Further work would need, for example, parallel chunk preparation or fewer indexes during bulk loads; it was not attempted in this phase.
+**Result (2026-10-18): the target of ≥ 2,000 rows/s is met at the median of three runs (2,137 rows/s), but not with a wide margin: one of the three runs reached 1,952 rows/s.** Runs vary by about ±10 % on this laptop; free RAM was below 1 GB during the measurements (other applications open). Wall time includes interpreter start-up (~4 s). Each run used a fresh database cloned from a migrated, seeded template (`cti_perf_tpl`), and the same synthetic file as run 2.
+
+### What changed (2026-10-18), and why — each step measured on a 40,000-line slice
+
+| Step | Finding | Effect |
+|---|---|---|
+| Profiling | Writing 40k `event_ground_truth` rows took 18.8 s — more than inserting the events. | — |
+| Diagnosis | Not missing statistics (`ANALYZE` first: no change in the same transaction) and not the plan shape (`enable_seqscan=off`: no change). The per-row foreign-key check against the **partitioned** `fact_security_event` was being **re-planned for every row** (default plan cache mode picks custom plans), at ~0.45 ms per row. In psql on 40k rows: `force_custom_plan` 20.2 s, `force_generic_plan` 2.4 s. | — |
+| Fix 1 | `SET LOCAL plan_cache_mode = force_generic_plan` in ingest transactions (generic plan prunes partitions at run time). | 40k slice 47.4 s → 30.7 s |
+| Fix 2 | Read/normalise on one thread while one writer thread writes the previous chunk; build storable rows and serialise JSON on the reading thread; COPY raw records directly into `raw_record` (IDs read back via the `(batch_id, record_number)` index) instead of temp table + `INSERT … SELECT`. | full file 131.5 s → 111 s |
+| Fix 3 | Two writer threads on separate connections, **committing strictly in order** (`_CommitOrder`); events already held by an uncommitted earlier chunk are counted as duplicates up front; partitions are created only with no write in flight; 30 s lock timeout per chunk as a backstop against cycles with other concurrent loads. | full file → ~98 s |
+| Fix 4 | Exact-equivalent fast paths: cached IP canonicalisation (`lru_cache`), skip the JSON depth walk when the text has ≤ 64 opening brackets, ASCII fast path in NUL/surrogate escaping; chunk size 10,000. | full file → 79–93 s |
+
+A first attempt — a writer thread that waited for its turn **while holding its transaction open** — deadlocked in the test suite when a later chunk inserted a duplicate event before the earlier chunk did (the wait was in Python, so PostgreSQL could not detect it). That is why duplicates against in-flight chunks are now resolved before writing.
+
+**Equivalence check:** the 180k-row file was loaded once with the previous code (commit `fbd27b1`) and once with the new code into separate databases; checksums over all stored event columns, raw records (payload, text, record number ↔ event link), ground-truth labels, and the batch counters/metadata were **identical**.
+
+Remaining cost on this machine (40k slice, writer thread): event insert into 11 indexes plus 6 foreign-key checks per row (~6.4 s, of which FK checks ~2.6 s), raw-record COPY (~5 s), ground truth (~2.4 s); reading/normalising ~9–11 s on the reading thread. Throughput on the real UNSW-NB15 CSV (more columns) has **not** been measured — the dataset is still not present.
 
 ## NFR-04 — API latency on ≈3M events
 

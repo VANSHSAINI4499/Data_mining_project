@@ -216,6 +216,8 @@ pending ──▶ processing ──▶ completed
 ```
 
 - Each chunk commits atomically and updates `last_committed_record`.
+- **Parallel chunk writers** (`CTI_INGEST_WRITERS`, default 2): records are read and normalised on one thread while chunks are written concurrently, each on its own database connection. Chunks **commit strictly in order**, so `last_committed_record`, cancellation, the rejection-ratio stop, and resume behave exactly as in a sequential load (verified: identical stored events, raw records, labels, and batch counters for a 180k-row file). An event already held by an uncommitted earlier chunk is counted as a duplicate up front, so chunks never wait on each other's rows; new monthly partitions are created only while no chunk is in flight. A chunk that waits more than 30 s for rows locked by *another* concurrent load fails the batch with `LOCK_TIMEOUT` (resumable with retry) instead of hanging.
+- Ingest transactions use `plan_cache_mode = force_generic_plan` (transaction-local): the per-row foreign-key checks of `event_ground_truth` against the partitioned event table were otherwise re-planned per row (~0.45 ms each). Measurements: [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 - Transient failures (DB connection loss, deadlock) → job retried up to 3 attempts with exponential back-off (10 s, 60 s, 300 s), resuming after `last_committed_record`. Because inserts are idempotent, overlap is harmless.
 - Deterministic failures (unsupported variant, threshold exceeded) are **not** retried.
 - `POST /api/v1/ingestion/batches/{batch_id}/retry` (admin/analyst) re-enqueues a `failed` batch.

@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     env: Environment = Environment.DEVELOPMENT
     log_level: str = "INFO"
     database_url: SecretStr = SecretStr("postgresql+psycopg://cti:change-me@localhost:5432/cti")
+    # Optional owner/migration role (DDL). When set, Alembic and `cti db grant-app-role` use
+    # it and `database_url` can be a DML-only application role (DEPLOYMENT_GUIDE.md).
+    migration_database_url: SecretStr | None = None
     secret_key: SecretStr = SecretStr("change-me")
     session_ttl_minutes: int = Field(default=480, ge=5, le=7 * 24 * 60)
     session_idle_minutes: int = Field(default=60, ge=1, le=24 * 60)
@@ -45,7 +48,12 @@ class Settings(BaseSettings):
     max_upload_mb: int = Field(default=50, ge=1, le=1024)
     import_root: Path = Path("data")
     max_reject_ratio: float = Field(default=0.2, gt=0, le=1)
-    ingest_chunk_size: int = Field(default=5000, ge=1, le=100_000)
+    ingest_chunk_size: int = Field(default=10_000, ge=1, le=100_000)
+    # Parallel chunk writers (one database connection each); chunks still commit in order.
+    ingest_writers: int = Field(default=2, ge=1, le=8)
+    # `cti worker` queues incremental processing (matching, scoring, correlation of newly
+    # completed batches) this often when there is work; 0 disables the scheduler.
+    schedule_processing_seconds: int = Field(default=120, ge=0, le=86_400)
     max_query_days: int = Field(default=400, ge=1)
     max_agg_days: int = Field(default=400, ge=1)
     site_timezone: str = "UTC"

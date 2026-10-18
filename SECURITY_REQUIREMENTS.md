@@ -64,7 +64,7 @@ Based on the OWASP File Upload Cheat Sheet (<https://cheatsheetseries.owasp.org/
 - All queries via SQLAlchemy Core/ORM with bound parameters. `text()` is allowed only with bound parameters and static SQL (e.g., partition functions in migrations), reviewed explicitly.
 - Dynamic identifiers (sort keys, group-by dimensions, aggregation metrics) come from **allowlisted enums** mapped to column objects — never string-interpolated.
 - No endpoint accepts SQL, expressions, or arbitrary filter DSL; correlation rules use an allowlisted DSL compiled to SQLAlchemy ([ATTACK_CORRELATION.md](ATTACK_CORRELATION.md#3-rule-definition)).
-- The application DB role is not a superuser; in production it lacks DDL rights (migrations run with a separate migration role) and lacks `UPDATE`/`DELETE` on `audit_log`.
+- The application DB role is not a superuser; in production it lacks DDL rights (migrations run with a separate migration role) and lacks `UPDATE`/`DELETE` on `audit_log`. Implemented by `cti db grant-app-role` ([DEPLOYMENT_GUIDE.md §4.1](DEPLOYMENT_GUIDE.md)); the two runtime operations needing more (partition creation, audit-log retention with a 364-day floor) are `SECURITY DEFINER` functions with a fixed `search_path` and `EXECUTE` revoked from `PUBLIC` (migration `9d3e5a7c2b18`). Development may still use one role for both.
 
 ## 7. Audit logging
 

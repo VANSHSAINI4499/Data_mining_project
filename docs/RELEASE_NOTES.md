@@ -36,8 +36,9 @@ Date: 2026-10-15. Everything below was run on the development machine (Windows 1
 
 ## Known limitations
 
-- Ingestion throughput below the NFR-03 target (see PERFORMANCE.md).
-- Database role separation (a migration-owner role vs. a DML-only application role) is **not implemented**; the application uses one role that owns the schema.
+- Ingestion throughput: NFR-03 met at the median of three runs on 2026-10-18 (2,137 rows/s; one run 1,952 rows/s) on the synthetic file — see PERFORMANCE.md. Not measured on UNSW-NB15.
+- Database role separation: implemented (`cti db grant-app-role`, DEPLOYMENT_GUIDE.md §4.1), but the end-to-end test with a real DML-only role was **not run** here because the development role lacks `CREATEROLE`; development still uses one role by default.
+- Scheduling: `cti worker` queues incremental processing (matching, scoring incl. web payloads, correlation) every `CTI_SCHEDULE_PROCESSING_SECONDS` when there is work.
 - Production frontend serving / TLS (open decision OD-2) is not decided; the frontend runs on the Vite dev server.
 - TAXII polling is not implemented (Phase 8).
 - Frontend gaps against the specification are listed in [FRONTEND_SPECIFICATION.md §11](../FRONTEND_SPECIFICATION.md#11-implementation-status-phase-6).

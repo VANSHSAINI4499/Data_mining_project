@@ -238,3 +238,52 @@ def test_correlation_rule_raises_alerts_from_attack_like_params(
     # Re-running adds no duplicate alerts or evidence.
     again = correlation.run_correlation(db, CLI_ACTOR, start, end, [rule])
     assert again["rules"][rule]["alerts_created"] == 0
+
+
+def test_analyst_feedback_on_a_web_payload_prediction(
+    login: Callable[..., LoggedIn],
+    db: Session,
+    session_factory: sessionmaker[Session],
+    trained: uuid.UUID,
+    access_log: None,
+) -> None:
+    run = web_payload.start_scoring(db, CLI_ACTOR, SCOPE, trained, enqueue=False)
+    web_payload.run_scoring(session_factory, get_settings(), run.scoring_run_id)
+    with db.begin():
+        result = db.scalars(
+            select(WebPayloadResult).where(WebPayloadResult.param_name == "file")
+        ).one()
+        event_id, result_id = result.event_id, result.result_id
+    analyst = login("ana", Role.ANALYST)
+    detail = analyst.client.get(f"/api/v1/events/{event_id}").json()
+    outputs = detail["model_outputs"]["web_payload_classifications"]
+    assert outputs[0]["result_id"] == str(result_id)
+    resp = analyst.client.post(
+        "/api/v1/feedback",
+        json={
+            "target_type": "web_payload_result",
+            "target_id": str(result_id),
+            "verdict": "false_positive",
+            "comment": "our own security scanner",
+        },
+        headers=analyst.headers(),
+    )
+    assert resp.status_code == 201, resp.text
+    missing = analyst.client.post(
+        "/api/v1/feedback",
+        json={
+            "target_type": "web_payload_result",
+            "target_id": "999999",
+            "verdict": "true_positive",
+        },
+        headers=analyst.headers(),
+    )
+    assert missing.status_code == 404
+    summary = analyst.client.get("/api/v1/feedback/summary").json()
+    assert summary["by_web_payload_model"] == [
+        {"name": "web_attack_classifier", "version": 1, "verdict": "false_positive", "count": 1}
+    ]
+    # Feedback is stored separately; the prediction itself is unchanged.
+    with db.begin():
+        again = db.get(WebPayloadResult, result_id)
+        assert again is not None and again.is_attack_like is result.is_attack_like

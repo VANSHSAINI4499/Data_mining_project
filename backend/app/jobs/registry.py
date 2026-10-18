@@ -7,6 +7,7 @@ from app.jobs.diagnostic import run_diagnostic
 from app.jobs.ingestion import run_ingestion
 from app.jobs.investigation import (
     run_correlation,
+    run_incremental,
     run_mine_patterns,
     run_ti_import,
     run_ti_match,
@@ -34,4 +35,5 @@ HANDLERS: dict[str, JobHandler] = {
     "ti.sync": run_ti_sync,
     "correlation.run": run_correlation,
     "correlation.mine_patterns": run_mine_patterns,
+    "incremental.process": run_incremental,
 }

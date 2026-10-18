@@ -149,7 +149,9 @@ def apply(session: Session, settings: Settings, actor: Actor, *, dry_run: bool) 
             )
             session.execute(delete(Job).where(*job_conds))
             session.execute(delete(AuthSession).where(sessions_cond))
-            session.execute(delete(AuditLog).where(audit_cond))
+            # The application role has no DELETE on audit_log; the owner-defined function
+            # enforces the 365-day minimum (migration 9d3e5a7c2b18).
+            session.execute(select(func.prune_audit_log(cut["audit_records"])))
         audit.record(
             session,
             actor,

@@ -8,7 +8,7 @@ from typing import Any
 
 from app.core.config import get_settings
 from app.jobs.runtime import JobContext
-from app.services import correlation, patterns, threat_intel
+from app.services import correlation, incremental, patterns, threat_intel
 from app.services.actors import SYSTEM_ACTOR
 
 
@@ -53,3 +53,8 @@ def run_ti_sync(ctx: JobContext) -> dict[str, Any]:
         "indicators_updated": run.indicators_updated,
         "pages": run.report.get("pages"),
     }
+
+
+def run_incremental(ctx: JobContext) -> dict[str, Any]:
+    """Scheduled (or queued) incremental processing: matching, scoring, then correlation."""
+    return incremental.run_exclusive(ctx.session_factory, get_settings(), SYSTEM_ACTOR)

@@ -45,6 +45,18 @@ def list_jobs(
     return list(session.scalars(stmt))
 
 
+def has_open_job(session: Session, job_type: str) -> bool:
+    """A job of this type is queued or running."""
+    return (
+        session.scalar(
+            select(Job.job_id)
+            .where(Job.job_type == job_type, Job.status.in_(("queued", "running")))
+            .limit(1)
+        )
+        is not None
+    )
+
+
 def claim_next_job(session: Session, now: datetime) -> Job | None:
     """Atomically move the oldest runnable queued job to ``running``.
 

@@ -40,7 +40,14 @@ EVIDENCE_TYPES = (
     "indicator_match",
     "web_payload_result",
 )
-FEEDBACK_TARGETS = ("event", "classification_result", "anomaly_result", "indicator_match", "alert")
+FEEDBACK_TARGETS = (
+    "event",
+    "classification_result",
+    "anomaly_result",
+    "indicator_match",
+    "alert",
+    "web_payload_result",
+)
 
 
 def _in(column: str, values: tuple[str, ...]) -> str:

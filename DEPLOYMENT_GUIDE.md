@@ -40,6 +40,7 @@ Implemented now (every one is listed in `.env.example`; a unit test enforces thi
 | `CTI_ENV` | `development` | `development`, `test`, or `production` (production refuses placeholder secrets). |
 | `CTI_LOG_LEVEL` | `INFO` | Log level. |
 | `CTI_DATABASE_URL` | `postgresql+psycopg://cti:change-me@localhost:5432/cti` | Application database. |
+| `CTI_MIGRATION_DATABASE_URL` | *(unset)* | Schema-owner role used by Alembic and `cti db grant-app-role`. Unset: the single `CTI_DATABASE_URL` role does everything (development default). See §4.1. |
 | `CTI_TEST_DATABASE_URL` | `postgresql+psycopg://cti:change-me@localhost:5432/cti_test` | Test database. Its name **must contain `test`** and differ from `CTI_DATABASE_URL`; the test suite refuses otherwise because it drops and recreates the schema. |
 | `CTI_SECRET_KEY` | `change-me` | ≥ 32 random bytes; HMAC key for session/CSRF token hashing. Generate: `python -c "import secrets; print(secrets.token_urlsafe(48))"`. |
 | `CTI_SESSION_TTL_MINUTES` / `CTI_SESSION_IDLE_MINUTES` | `480` / `60` | Session lifetimes. |
@@ -48,7 +49,9 @@ Implemented now (every one is listed in `.env.example`; a unit test enforces thi
 | `CTI_MAX_UPLOAD_MB` | `50` | API upload limit (enforced before parsing). |
 | `CTI_IMPORT_ROOT` | `data` | CLI imports must resolve inside this directory (relative to the repo root). |
 | `CTI_MAX_REJECT_RATIO` | `0.2` | After 10,000 records, a higher rejected fraction fails the batch. |
-| `CTI_INGEST_CHUNK_SIZE` | `5000` | Records per transaction while loading. |
+| `CTI_INGEST_CHUNK_SIZE` | `10000` | Records per transaction while loading. |
+| `CTI_SCHEDULE_PROCESSING_SECONDS` | `120` | How often `cti worker` checks for newly completed batches and, if any step has work, queues one `incremental.process` job (indicator matching, classifier / anomaly / web payload scoring, then correlation). `0` disables the scheduler. |
+| `CTI_INGEST_WRITERS` | `2` | Chunks written in parallel, each on its own database connection; chunks still commit in order, so resume after a failure is unaffected. `1` loads strictly one chunk at a time. |
 | `CTI_MAX_QUERY_DAYS` / `CTI_MAX_AGG_DAYS` | `400` / `400` | Maximum time span for event queries / aggregations. |
 | `CTI_SITE_TIMEZONE` | `UTC` | Timezone for the anomaly "off hours" feature (07:00-19:00 local is business time). |
 | `CTI_MAX_CONCURRENT_JOBS` | `2` | Job slots per worker process. |
@@ -83,6 +86,23 @@ psql -h localhost -U postgres -c "CREATE DATABASE cti_test OWNER cti"
 - `.local/` is git-ignored. Put the matching URLs in `.env`.
 - `CREATEDB` is needed because migration tests create and drop a scratch database `cti_test_migrations`.
 - The cluster does not start automatically: `pg_ctl -D .local/pgdata start` / `stop` / `status`.
+
+### 4.1 Separate migration and application roles (recommended outside development)
+
+The schema owner (`cti` above) keeps DDL rights and runs migrations; the API, worker, and CLI connect as a DML-only role ([SECURITY_REQUIREMENTS.md §6](SECURITY_REQUIREMENTS.md)):
+
+```bash
+# once, as a superuser or a role with CREATEROLE:
+psql -h localhost -U postgres -c "CREATE ROLE cti_app LOGIN PASSWORD '<app password>'"
+# .env: owner for migrations, app role for everything else
+#   CTI_MIGRATION_DATABASE_URL=postgresql+psycopg://cti:<owner password>@localhost:5432/cti
+#   CTI_DATABASE_URL=postgresql+psycopg://cti_app:<app password>@localhost:5432/cti
+cd backend && uv run alembic upgrade head          # runs as the owner
+uv run --project backend cti db grant-app-role --role cti_app   # grants + prints a report
+uv run --project backend cti db check-app-role --role cti_app   # verify later (exit 1 = problems)
+```
+
+What the application role gets: `SELECT/INSERT/UPDATE/DELETE` on application tables, sequences, and `EXECUTE` on two `SECURITY DEFINER` functions owned by the schema owner — `ensure_event_partitions` (monthly partitions during ingestion) and `prune_audit_log(cutoff)` (retention; refuses cutoffs newer than 364 days). It gets **no** `CREATE` on the schema, **no** `UPDATE/DELETE/TRUNCATE` on `audit_log`, and read-only `alembic_version`. Default privileges cover tables added by later migrations; re-run `grant-app-role` after upgrading so table-specific restrictions are re-applied.
 
 ## 5. Backend and worker
 
@@ -188,7 +208,7 @@ Public datasets are downloaded manually (UNSW-NB15: <https://research.unsw.edu.a
 - No TLS termination — intended for localhost or a trusted network only.
 - Frontend runs via the Vite dev server; serving a production build is an open decision (OD-2).
 - The native PostgreSQL cluster is started and stopped manually.
-- Large dataset imports are CPU/disk bound; throughput will be measured in Phase 7, not assumed.
+- Large dataset imports are CPU/disk bound; measured throughput is in [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 - Model artifacts are tied to library versions; upgrading scikit-learn may require retraining.
 
 ## 14. CLI reference (`cti`)

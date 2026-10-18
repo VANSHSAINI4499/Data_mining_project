@@ -149,7 +149,7 @@ export function AlertsPage() {
             { key: "evidence", header: "Evidence", render: (a) => formatNumber(a.evidence_count) },
             {
               key: "last",
-              header: "Last event (UTC)",
+              header: "Last event",
               render: (a) => formatTime(a.last_event_time),
             },
           ]}
@@ -285,10 +285,7 @@ export function AlertDetailPage() {
                 `${a.primary_entity_type} ${a.primary_entity_value}`
               ),
             ],
-            [
-              "Event span (UTC)",
-              `${formatTime(a.first_event_time)} – ${formatTime(a.last_event_time)}`,
-            ],
+            ["Event span", `${formatTime(a.first_event_time)} – ${formatTime(a.last_event_time)}`],
             ["Evidence items", formatNumber(a.evidence_count)],
             [
               "Case",
@@ -339,7 +336,7 @@ export function AlertDetailPage() {
           rows={a.evidence}
           rowKey={(e) => `${e.evidence_type}-${e.evidence_ref}`}
           columns={[
-            { key: "t", header: "Time (UTC)", render: (e) => formatTime(e.event_time) },
+            { key: "t", header: "Time", render: (e) => formatTime(e.event_time) },
             { key: "cat", header: "Category", render: (e) => <ProvenanceTag kind={e.category} /> },
             { key: "step", header: "Rule step", render: (e) => e.step_id ?? "—" },
             {
@@ -639,7 +636,7 @@ export function CaseDetailPage() {
           error={timeline.error}
           emptyTitle="No timeline entries"
           columns={[
-            { key: "t", header: "Time (UTC)", render: (e) => formatTime(e.entry_time) },
+            { key: "t", header: "Time", render: (e) => formatTime(e.entry_time) },
             { key: "type", header: "Type", render: (e) => e.entry_type.replaceAll("_", " ") },
             { key: "b", header: "Entry", render: (e) => <SafeText value={e.body} max={200} /> },
           ]}

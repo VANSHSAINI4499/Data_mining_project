@@ -540,6 +540,7 @@ def _target_exists(session: Session, target_type: str, target_id: str) -> bool:
         "classification_result": ClassificationResult.result_id,
         "anomaly_result": AnomalyResult.result_id,
         "indicator_match": IndicatorMatch.match_id,
+        "web_payload_result": WebPayloadResult.result_id,
     }[target_type]
     return session.scalar(select(func.count()).where(column == numeric)) != 0
 
@@ -679,6 +680,19 @@ def feedback_summary(session: Session) -> dict[str, Any]:
             .join(MlModel, MlModel.model_id == AnomalyResult.model_id)
             .group_by(MlModel.name, MlModel.version, AnalystFeedback.verdict)
         ).all()
+        by_web_payload = session.execute(
+            select(MlModel.name, MlModel.version, AnalystFeedback.verdict, func.count())
+            .select_from(AnalystFeedback)
+            .join(
+                WebPayloadResult,
+                and_(
+                    AnalystFeedback.target_type == "web_payload_result",
+                    cast(WebPayloadResult.result_id, Text) == AnalystFeedback.target_id,
+                ),
+            )
+            .join(MlModel, MlModel.model_id == WebPayloadResult.model_id)
+            .group_by(MlModel.name, MlModel.version, AnalystFeedback.verdict)
+        ).all()
     return {
         "by_rule": [{"rule_key": k, "verdict": v, "count": n} for k, v, n in by_rule],
         "by_classifier": [
@@ -686,6 +700,9 @@ def feedback_summary(session: Session) -> dict[str, Any]:
         ],
         "by_anomaly_model": [
             {"name": m, "version": ver, "verdict": v, "count": n} for m, ver, v, n in by_anomaly
+        ],
+        "by_web_payload_model": [
+            {"name": m, "version": ver, "verdict": v, "count": n} for m, ver, v, n in by_web_payload
         ],
     }
 

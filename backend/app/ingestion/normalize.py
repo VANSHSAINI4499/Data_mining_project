@@ -7,6 +7,7 @@ the rejection catalogue. Rule: an invalid *required* field rejects the record; a
 
 from __future__ import annotations
 
+import functools
 import ipaddress
 import math
 import re
@@ -126,10 +127,20 @@ def parse_port(value: Any) -> int:
 
 
 def parse_ip(value: Any) -> str:
+    text = str(value).strip()
+    result = _canonical_ip(text)
+    if result is None:
+        raise FieldError(E.INVALID_IP, f"invalid IP address: {excerpt(value)}")
+    return result
+
+
+@functools.lru_cache(maxsize=65_536)
+def _canonical_ip(text: str) -> str | None:
+    """Canonical text form, or None if invalid (cached: logs repeat the same addresses)."""
     try:
-        address = ipaddress.ip_address(str(value).strip())
-    except ValueError as exc:
-        raise FieldError(E.INVALID_IP, f"invalid IP address: {excerpt(value)}") from exc
+        address = ipaddress.ip_address(text)
+    except ValueError:
+        return None
     if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
         address = address.ipv4_mapped
     return str(address)
@@ -340,7 +351,7 @@ def normalize_event(
 
     for name, spec in SPECS.items():
         value = raw_fields.get(name)
-        if is_missing(value):
+        if value is None or is_missing(value):  # inline None check: most fields are absent
             if name in required:
                 return Rejection(E.MISSING_REQUIRED_FIELD, f"{name} is required", name)
             values[name] = None

@@ -1,7 +1,8 @@
 """Alembic environment.
 
 URL resolution order: a connection passed via ``config.attributes["connection"]`` (tests),
-then ``sqlalchemy.url`` set programmatically (tests), then ``CTI_DATABASE_URL``.
+then ``sqlalchemy.url`` set programmatically (tests), then ``CTI_MIGRATION_DATABASE_URL``
+(the schema-owner role, when roles are separated), then ``CTI_DATABASE_URL``.
 """
 
 from logging.config import fileConfig
@@ -22,9 +23,9 @@ target_metadata = Base.metadata
 
 
 def _url() -> str:
-    return (
-        config.get_main_option("sqlalchemy.url") or get_settings().database_url.get_secret_value()
-    )
+    settings = get_settings()
+    owner = settings.migration_database_url or settings.database_url
+    return config.get_main_option("sqlalchemy.url") or owner.get_secret_value()
 
 
 def _run(connection: Connection) -> None:

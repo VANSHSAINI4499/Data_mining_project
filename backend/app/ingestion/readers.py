@@ -149,7 +149,8 @@ def _parse_json_object(text: str) -> tuple[Any, Rejection | None]:
         return None, Rejection(
             E.MALFORMED_JSON, f"expected a JSON object, got {type(value).__name__}"
         )
-    if json_depth(value) > MAX_JSON_DEPTH:
+    # Nesting depth cannot exceed the number of opening brackets, so most records skip the walk.
+    if text.count("{") + text.count("[") > MAX_JSON_DEPTH and json_depth(value) > MAX_JSON_DEPTH:
         return None, Rejection(E.NESTING_TOO_DEEP, f"nesting deeper than {MAX_JSON_DEPTH}")
     return value, None
 

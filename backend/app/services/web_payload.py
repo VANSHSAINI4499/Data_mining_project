@@ -583,6 +583,7 @@ def event_results(session: Session, event_id: int, event_time: datetime) -> list
     return [
         {
             "model": {"model_id": r[0].model_id, "name": r[1], "version": r[2], "status": r[3]},
+            "result_id": str(r[0].result_id),
             "param_index": r[0].param_index,
             "param_name": r[0].param_name,
             "predicted_class": r[0].predicted_class,

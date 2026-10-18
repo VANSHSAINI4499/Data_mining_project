@@ -9,6 +9,7 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import func, select
 from sqlalchemy.exc import DBAPIError, OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -22,6 +23,8 @@ from app.services.jobs import ClaimedJob
 log = logging.getLogger(__name__)
 
 ERROR_MESSAGE_MAX = 500
+SCHEDULED_JOB = "incremental.process"
+SCHEDULE_ENQUEUE_LOCK = "cti.schedule_processing"
 
 
 def _error(code: str, exc: BaseException) -> dict[str, Any]:
@@ -130,6 +133,29 @@ class Worker:
         for job_id in failed:
             log.error("job marked failed: worker_timeout", extra={"stale_job_id": str(job_id)})
 
+    def schedule_processing(self) -> bool:
+        """Queue one ``incremental.process`` job if there is work and none is pending.
+
+        Serialised across workers by a transaction-scoped advisory lock. Returns True if a
+        job was queued.
+        """
+        from app.services import incremental
+        from app.services.actors import SYSTEM_ACTOR
+
+        with self.session_factory() as session:
+            if not incremental.has_actionable_work(session):
+                return False
+            with session.begin():
+                session.execute(
+                    select(func.pg_advisory_xact_lock(func.hashtext(SCHEDULE_ENQUEUE_LOCK)))
+                )
+                if jobs_service.has_open_job(session, SCHEDULED_JOB):
+                    return False
+                jobs_service.enqueue_in_transaction(
+                    session, SYSTEM_ACTOR, SCHEDULED_JOB, {"trigger": "schedule"}, max_attempts=1
+                )
+        return True
+
     def _slot_loop(self, stop: threading.Event) -> None:
         while not stop.is_set():
             try:
@@ -148,12 +174,21 @@ class Worker:
         for slot in slots:
             slot.start()
         log.info("worker started", extra={"slots": len(slots)})
+        interval = self.settings.schedule_processing_seconds
+        next_schedule = time.monotonic() + min(interval, 10)
         try:
             while not stop.is_set():
                 try:
                     self.reap_stale()
                 except Exception:
                     log.exception("stale-job reaper failed")
+                if interval and time.monotonic() >= next_schedule:
+                    next_schedule = time.monotonic() + interval
+                    try:
+                        if self.schedule_processing():
+                            log.info("scheduled incremental processing queued")
+                    except Exception:
+                        log.exception("processing scheduler failed")
                 if heartbeat_file is not None:
                     heartbeat_file.write_text(clock.now().isoformat(), encoding="utf-8")
                 stop.wait(self.settings.worker_poll_seconds)

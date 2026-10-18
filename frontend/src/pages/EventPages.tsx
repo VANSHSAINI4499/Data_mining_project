@@ -140,7 +140,7 @@ export function EventsPage() {
           columns={[
             {
               key: "time",
-              header: "Time (UTC)",
+              header: "Time",
               render: (e) => (
                 <Link className="text-accent" to={`/events/${e.event_id}`}>
                   {formatTime(e.event_time)}
@@ -193,6 +193,7 @@ interface Classification {
 
 interface WebPayloadPrediction {
   model: { model_id: string; name: string; version: number; status: string };
+  result_id: string;
   param_index: number;
   param_name: string;
   predicted_class: string;
@@ -409,6 +410,20 @@ export function EventDetailPage() {
                     A prediction about this parameter value only, not about the request. Scores are
                     not probabilities. Scored {formatTime(w.scored_at)}.
                   </p>
+                  {hasRole(session.data?.user, "analyst") && (
+                    <details className="mt-1">
+                      <summary className="cursor-pointer text-xs text-accent">
+                        Give feedback on this prediction
+                      </summary>
+                      <div className="mt-2">
+                        <FeedbackForm
+                          targetType="web_payload_result"
+                          targetId={w.result_id}
+                          invalidate={[`/events/${eventId}`]}
+                        />
+                      </div>
+                    </details>
+                  )}
                 </li>
               ))}
             </ul>

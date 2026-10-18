@@ -165,11 +165,11 @@ All pages in §5 are implemented against the real API (TanStack Query, Recharts)
 | Spec item | Status |
 |---|---|
 | `DataTable` sortable keys and column chooser | Not implemented; tables use the API's default order (alerts offer a risk / recency sort). |
-| UTC ↔ local time toggle | Not implemented; all times are UTC. The time-range inputs are interpreted as UTC. |
+| UTC ↔ local time toggle | Implemented (header selector, remembered per browser). Displayed times carry their zone (`UTC` or `UTC+hh:mm`); the time-range inputs are still interpreted as UTC. |
 | Alerts queue bulk acknowledge | Not implemented; alerts are triaged one at a time. |
 | Overview "alerts opened over time" chart | Not implemented; open alerts are shown by severity. |
 | Upload form timezone / date-order / dataset-partition fields | Not exposed in the UI (available via API and `cti ingest`). |
 | Data quality status-over-time chart and unmapped label list | Per-source counts and latest problems are shown as tables only. |
 | Training-run form | A JSON configuration editor validated by the API, not individual fields. |
 | Drift warnings on the Models page | Phase 8. |
-| Code splitting | The production build is one ~790 kB JavaScript chunk before compression (Vite warns above 500 kB); lazy-loaded routes are a later optimisation. |
+| Code splitting | Implemented: page modules are lazy-loaded routes; the main chunk is 309 kB (98 kB gzip), charts load with the pages that use them. |

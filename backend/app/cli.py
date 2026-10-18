@@ -349,6 +349,29 @@ def cmd_models(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_db(args: argparse.Namespace) -> int:
+    """Role separation: run as the schema owner (CTI_MIGRATION_DATABASE_URL, else
+    CTI_DATABASE_URL). Prints a privilege report; exits 1 if the report has problems."""
+    import psycopg
+
+    from app.services import db_roles
+
+    settings = get_settings()
+    owner_url = (settings.migration_database_url or settings.database_url).get_secret_value()
+    try:
+        if args.action == "grant-app-role":
+            report = db_roles.grant_app_role(owner_url, args.role)
+        else:
+            with psycopg.connect(owner_url.replace("+psycopg", "", 1)) as conn:
+                row = conn.execute("SELECT current_user").fetchone()
+                report = db_roles.privilege_report(conn, args.role, str(row[0] if row else ""))
+    except db_roles.RoleSetupError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(report.as_dict(), indent=2))
+    return 0 if not report.problems else 1
+
+
 def cmd_artifacts_gc(args: argparse.Namespace) -> int:
     import shutil
 
@@ -659,6 +682,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("model_id", nargs="?")
     p.add_argument("--reason")
     p.set_defaults(func=cmd_models)
+
+    p = sub.add_parser(
+        "db", help="database role separation (run as the schema owner / migration role)"
+    )
+    p.add_argument("action", choices=["grant-app-role", "check-app-role"])
+    p.add_argument("--role", required=True, help="DML-only application role (must exist)")
+    p.set_defaults(func=cmd_db)
 
     p = sub.add_parser("artifacts", help="artifact maintenance")
     p.add_argument("action", choices=["gc"])

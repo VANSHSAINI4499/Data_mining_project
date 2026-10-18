@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import get_settings
@@ -340,3 +340,87 @@ def test_data_quality_rerun_replaces_results(
         "default_partition_empty",
         "duplicate_ratio",
     }
+
+
+def _seed(factory: sessionmaker[Session]) -> None:
+    from app.services.reference import seed_reference
+
+    with factory() as session:
+        seed_reference(session, CLI_ACTOR)
+
+
+@pytest.mark.parametrize("writers", [1, 2, 3])
+def test_parallel_writers_dedup_across_in_flight_chunks(
+    committed_db: sessionmaker[Session],
+    import_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    writers: int,
+) -> None:
+    # Real pooled connections (committed_db), so writers really run on separate connections.
+    session_factory = committed_db
+    _seed(committed_db)
+    # One record per chunk, so a duplicate lands in a chunk written concurrently with the
+    # chunk holding the first copy; the later chunk must see it as a duplicate.
+    monkeypatch.setattr(get_settings(), "ingest_chunk_size", 1)
+    monkeypatch.setattr(get_settings(), "ingest_writers", writers)
+    rows = [
+        flow(1, label_raw="BENIGN"),
+        flow(1, label_raw="BENIGN"),
+        flow(2, label_raw="BRUTE_FORCE", is_attack=True),
+        "not json",
+        flow(2, label_raw="BRUTE_FORCE", is_attack=True),
+        flow(3, label_raw="Mystery Label"),
+    ]
+    outcome = ingest(session_factory, write_jsonl(import_root / "p.jsonl", rows), "synthetic")
+    assert outcome.status == "completed_with_errors"
+    assert (
+        outcome.records_total,
+        outcome.records_loaded,
+        outcome.records_rejected,
+        outcome.records_duplicate,
+    ) == (6, 3, 1, 2)
+    with committed_db() as db, db.begin():
+        assert db.scalar(select(func.count()).select_from(FactSecurityEvent)) == 3
+        assert db.scalar(select(func.count()).select_from(EventGroundTruth)) == 3
+        batch = db.get(IngestionBatch, outcome.batch_id)
+        assert batch is not None and batch.last_committed_record == 6
+        assert batch.batch_metadata["unmapped_labels"] == {"Mystery Label": 1}
+        numbers = list(
+            db.scalars(
+                select(RawRecord.record_number)
+                .where(RawRecord.batch_id == outcome.batch_id)
+                .order_by(RawRecord.record_number)
+            )
+        )
+    assert numbers == [1, 2, 3, 4, 5, 6]
+
+
+def test_failed_middle_chunk_commits_only_earlier_chunks(
+    committed_db: sessionmaker[Session],
+    import_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_factory = committed_db
+    _seed(committed_db)
+    monkeypatch.setattr(get_settings(), "ingest_chunk_size", 2)
+    monkeypatch.setattr(get_settings(), "ingest_writers", 3)
+    real_insert = ingestion._insert_chunk
+
+    def failing_insert(session: Session, batch: Any, rows: Any, category_ids: Any) -> Any:
+        if rows.chunk[0].raw.record_number == 3:  # second chunk: records 3-4
+            raise RuntimeError("simulated database failure")
+        return real_insert(session, batch, rows, category_ids)
+
+    monkeypatch.setattr(ingestion, "_insert_chunk", failing_insert)
+    path = write_jsonl(import_root / "m.jsonl", [flow(i) for i in range(1, 9)])
+    with pytest.raises(RuntimeError, match="simulated database failure"):
+        ingest(session_factory, path, "synthetic")
+    # Only the first chunk committed; chunks 3 and 4 (written concurrently) rolled back.
+    with committed_db() as db, db.begin():
+        assert db.scalar(select(func.count()).select_from(FactSecurityEvent)) == 2
+        batch = db.scalars(select(IngestionBatch)).one()
+        assert batch.last_committed_record == 2 and batch.records_total == 2
+        kept = db.scalar(
+            select(func.max(RawRecord.record_number)).where(RawRecord.batch_id == batch.batch_id)
+        )
+    assert kept == 2

@@ -23,7 +23,14 @@ Disposition = Literal[
     "confirmed_incident", "false_positive", "benign_true_positive", "inconclusive"
 ]
 Verdict = Literal["true_positive", "false_positive", "benign_unusual", "needs_more_info"]
-TargetType = Literal["event", "classification_result", "anomaly_result", "indicator_match", "alert"]
+TargetType = Literal[
+    "event",
+    "classification_result",
+    "anomaly_result",
+    "indicator_match",
+    "alert",
+    "web_payload_result",
+]
 
 
 class AlertPatch(RequestModel):

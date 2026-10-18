@@ -9,21 +9,34 @@ time span of the new batches plus each rule's window (look-back for late evidenc
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import Engine, func, or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core import clock
 from app.core.config import Settings
 from app.core.errors import NotFoundError
 from app.models import FactSecurityEvent, IngestionBatch, MlModel, ProcessingWatermark
-from app.services import anomaly, audit, classification, correlation, threat_intel
+from app.services import anomaly, audit, classification, correlation, threat_intel, web_payload
 from app.services.actors import Actor
 
-CONSUMERS = ("indicator_matching", "classifier_scoring", "anomaly_scoring", "correlation")
+CONSUMERS = (
+    "indicator_matching",
+    "classifier_scoring",
+    "anomaly_scoring",
+    "web_payload_scoring",
+    "correlation",
+)
+# Consumers that need an active model of this name; without one they wait (no advance).
+NEEDS_MODEL = {
+    "classifier_scoring": "attack_classifier",
+    "web_payload_scoring": "web_attack_classifier",
+}
+SCHEDULE_LOCK = "cti.incremental_processing"
 DONE_STATUSES = ("completed", "completed_with_errors")
 WINDOW = {"15m": timedelta(minutes=15), "1h": timedelta(hours=1), "1d": timedelta(days=1)}
 
@@ -116,6 +129,22 @@ def run_consumer(
             )
         done = classification.run_scoring(factory, settings, run.scoring_run_id)
         result |= {"status": "processed", "rows_scored": done.rows_scored}
+    elif consumer == "web_payload_scoring":
+        with factory() as session:
+            active = session.scalar(
+                select(MlModel.model_id).where(
+                    MlModel.name == web_payload.MODEL_NAME, MlModel.status == "active"
+                )
+            )
+        if active is None:
+            result["status"] = "skipped_no_active_web_payload_model"
+            return result
+        with factory() as session:
+            run = web_payload.start_scoring(
+                session, actor, {"batch_ids": [str(b) for b in batch_ids]}, None, enqueue=False
+            )
+        done = web_payload.run_scoring(factory, settings, run.scoring_run_id)
+        result |= {"status": "processed", "parameters_scored": done.rows_scored}
     elif consumer == "anomaly_scoring":
         with factory() as session:
             models = list(
@@ -171,6 +200,50 @@ def run_all(
     factory: sessionmaker[Session], settings: Settings, actor: Actor
 ) -> list[dict[str, Any]]:
     return [run_consumer(factory, settings, actor, c) for c in CONSUMERS]
+
+
+def has_actionable_work(session: Session) -> bool:
+    """True if some consumer has new batches it can process now (used by the scheduler).
+
+    Consumers waiting for a model that is not active do not count, so an idle system does
+    not queue a no-op job every interval.
+    """
+    with session.begin():
+        active = set(session.scalars(select(MlModel.name).where(MlModel.status == "active")))
+        for consumer in CONSUMERS:
+            needed = NEEDS_MODEL.get(consumer)
+            if needed is not None and needed not in active:
+                continue
+            batches, _ = _pending(session, consumer)
+            if batches:
+                return True
+    return False
+
+
+def run_exclusive(
+    factory: sessionmaker[Session], settings: Settings, actor: Actor
+) -> dict[str, Any]:
+    """``run_all`` under a session-level advisory lock: concurrent runs (several workers,
+    or a scheduled run next to ``cti process``) never process the same batches twice.
+
+    The lock is held on one dedicated connection in autocommit mode for the whole run, so
+    no transaction stays open while the consumers work.
+    """
+    bind = factory.kw["bind"]
+    with contextlib.ExitStack() as stack:
+        if isinstance(bind, Engine):
+            conn = stack.enter_context(
+                bind.connect().execution_options(isolation_level="AUTOCOMMIT")
+            )
+        else:  # a single shared connection (test harness)
+            conn = bind
+        key = func.hashtext(SCHEDULE_LOCK)
+        if not conn.scalar(select(func.pg_try_advisory_lock(key))):
+            return {"status": "already_running"}
+        try:
+            return {"status": "processed", "consumers": run_all(factory, settings, actor)}
+        finally:
+            conn.scalar(select(func.pg_advisory_unlock(key)))
 
 
 def watermarks(session: Session) -> list[dict[str, Any]]:

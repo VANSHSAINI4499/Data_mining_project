@@ -8,15 +8,20 @@ loading commits one chunk at a time so a failure loses at most one chunk and can
 from __future__ import annotations
 
 import hashlib
+import threading
 import uuid
+from collections import deque
 from collections.abc import Callable, Iterable
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import IO, Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy.exc import IntegrityError
+import psycopg
+from sqlalchemy.engine import Connection
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core import clock
@@ -442,6 +447,8 @@ def make_storable(value: Any) -> tuple[Any, bool]:
     def fix(item: Any) -> Any:
         nonlocal escaped
         if isinstance(item, str):
+            if item.isascii() and "\x00" not in item:
+                return item  # fast path: ASCII always encodes and needs no escaping
             if "\x00" in item:
                 escaped = True
                 item = item.replace("\x00", "\\x00")
@@ -514,124 +521,263 @@ def _outcome(batch: IngestionBatch) -> BatchOutcome:
     )
 
 
-def _flush_chunk(
-    session: Session,
-    batch: IngestionBatch,
-    chunk: list[Prepared],
-    category_ids: dict[str, int],
-    state: _LoadState,
-) -> None:
-    now = clock.now()
-    with session.begin():
-        valid = [p for p in chunk if p.event is not None]
-        if valid:
-            times = [p.event["event_time"] for p in valid if p.event]
-            repo.ensure_partitions(session, min(times), max(times))
+@dataclass
+class _ChunkRows:
+    """A chunk with its storable rows built (pure Python, no database access)."""
 
-        raw_rows = []
-        for p in chunk:
-            payload, escaped_payload = make_storable(p.raw.payload)
-            text, escaped_text = make_storable(p.raw.raw_text)
-            raw_rows.append(
-                {
-                    "batch_id": batch.batch_id,
-                    "record_number": p.raw.record_number,
-                    "raw_payload": payload,
-                    "raw_text": text,
-                    "raw_truncated": p.raw.truncated,
-                    "raw_nul_escaped": escaped_payload or escaped_text,
-                    "record_sha256": p.raw.sha256,
-                }
-            )
-        raw_ids = repo.insert_raw_records(session, raw_rows)
+    chunk: list[Prepared]
+    raw_rows: list[dict[str, Any]]
+    # (position in chunk, event row without raw_record_id / asset keys)
+    event_rows: list[tuple[int, dict[str, Any]]]
+    # Adapter statistics as of the end of this chunk (taken on the reading thread).
+    adapter_metadata: dict[str, Any]
 
-        assets = _AssetIndex([])
-        if valid:
-            ips = {
-                v
-                for p in valid
-                if p.event
-                for v in (p.event.get("src_ip"), p.event.get("dst_ip"))
-                if v
-            }
-            hosts = {p.event["host_name"] for p in valid if p.event and p.event.get("host_name")}
-            assets = _AssetIndex(repo.find_asset_versions(session, sorted(ips), sorted(hosts)))
 
-        event_rows = []
-        for p, raw_id in zip(chunk, raw_ids, strict=True):
-            if p.event is None:
-                continue
-            row = dict(p.event)
-            row["attributes"], _ = make_storable(row["attributes"])
-            for key in ("process_command_line", "url", "file_path", "signature"):
-                if isinstance(row.get(key), str):
-                    row[key], _ = make_storable(row[key])
-            row["src_asset_key"], row["dst_asset_key"] = assets.resolve(row)
-            row.update(source_id=batch.source_id, batch_id=batch.batch_id, raw_record_id=raw_id)
-            event_rows.append(row)
-        inserted = repo.insert_events(session, event_rows)
-        new_keys = {(fp, t): eid for eid, t, fp in inserted}
-
-        truths = []
-        for p in valid:
-            assert p.event is not None
-            identity = (p.event["event_fingerprint"], p.event["event_time"])
-            event_id = new_keys.pop(identity, None)  # pop: in-chunk duplicates get no second label
-            if event_id is not None and p.ground_truth is not None:
-                gt = p.ground_truth
-                truths.append(
-                    {
-                        "event_id": event_id,
-                        "event_time": p.event["event_time"],
-                        "label_raw": make_storable(gt.label_raw)[0],
-                        "attack_category_id": category_ids.get(gt.category_code)
-                        if gt.category_code
-                        else None,
-                        "is_attack": gt.is_attack,
-                        "mapping_status": gt.mapping_status,
-                        "label_mapping_version": gt.mapping_version,
-                    }
-                )
-                if gt.mapping_status != "mapped":
-                    labels = state.metadata.setdefault("unmapped_labels", {})
-                    if len(labels) < 200 or gt.label_raw in labels:
-                        labels[gt.label_raw] = labels.get(gt.label_raw, 0) + 1
-        repo.insert_ground_truth(session, truths)
-
-        rejections = [
+def _build_rows(batch: IngestionBatch, chunk: list[Prepared], adapter: Adapter) -> _ChunkRows:
+    raw_rows = []
+    for p in chunk:
+        payload, escaped_payload = make_storable(p.raw.payload)
+        text, escaped_text = make_storable(p.raw.raw_text)
+        raw_rows.append(
             {
                 "batch_id": batch.batch_id,
-                "raw_record_id": raw_id,
                 "record_number": p.raw.record_number,
-                "error_code": p.rejection.code,
-                "field_name": p.rejection.field,
-                "error_detail": make_storable(p.rejection.detail[:1024])[0],
+                "raw_payload": repo.json_text(payload),
+                "raw_text": text,
+                "raw_truncated": p.raw.truncated,
+                "raw_nul_escaped": escaped_payload or escaped_text,
+                "record_sha256": p.raw.sha256,
             }
-            for p, raw_id in zip(chunk, raw_ids, strict=True)
-            if p.rejection is not None
-        ]
-        repo.insert_rejections(session, rejections)
-
-        for p in valid:
-            for field_name, code in p.warnings:
-                state.warn(field_name, code)
-            state.naive_timestamps += int(p.naive_timestamp)
-        state.metadata["field_warnings"] = state.warnings
-        state.metadata["naive_timestamps"] = state.naive_timestamps
-        loaded = len(inserted)
-        state.total += len(chunk)
-        state.rejected += len(rejections)
-        repo.add_progress(
-            session,
-            batch.batch_id,
-            total=len(chunk),
-            loaded=loaded,
-            rejected=len(rejections),
-            duplicate=len(valid) - loaded,
-            last_record=chunk[-1].raw.record_number,
-            metadata=state.metadata,
-            now=now,
         )
+    event_rows = []
+    for i, p in enumerate(chunk):
+        if p.event is None:
+            continue
+        row = dict(p.event)
+        row["attributes"] = repo.json_text(make_storable(row["attributes"])[0])
+        for key in ("process_command_line", "url", "file_path", "signature"):
+            if isinstance(row.get(key), str):
+                row[key], _ = make_storable(row[key])
+        row.update(source_id=batch.source_id, batch_id=batch.batch_id)
+        event_rows.append((i, row))
+    metadata = {"encodings": dict(adapter.stats.encodings), **adapter.metadata}
+    return _ChunkRows(chunk, raw_rows, event_rows, metadata)
+
+
+CHUNK_LOCK_TIMEOUT_MS = 30_000
+
+
+class _ChunkAborted(Exception):
+    """A later chunk is rolled back because an earlier one failed (not the root cause)."""
+
+
+class _CommitOrder:
+    """Chunks are written concurrently but commit strictly in sequence.
+
+    ``wait_turn(seq)`` returns once every earlier chunk has committed, or raises
+    ``_ChunkAborted`` if an earlier chunk failed (or asked later chunks to stop).
+    Waiting happens in Python, never while holding locks an earlier chunk needs: a later
+    chunk may block on an earlier chunk's uncommitted rows (duplicate fingerprints), never
+    the reverse, so there is no deadlock.
+    """
+
+    def __init__(self) -> None:
+        self._next = 0
+        self._stop_from: int | None = None
+        self._cv = threading.Condition()
+
+    def wait_turn(self, seq: int) -> None:
+        with self._cv:
+            while True:
+                if self._stop_from is not None and seq >= self._stop_from:
+                    raise _ChunkAborted()
+                if self._next == seq:
+                    return
+                self._cv.wait()
+
+    def finish(self, seq: int, *, committed: bool, stop_later: bool = False) -> None:
+        with self._cv:
+            stop: int | None = None
+            if not committed:
+                stop = seq
+            elif stop_later:
+                stop = seq + 1
+            if stop is not None:
+                self._stop_from = stop if self._stop_from is None else min(self._stop_from, stop)
+            if committed:
+                self._next = seq + 1
+            self._cv.notify_all()
+
+
+@dataclass
+class _ChunkResult:
+    loaded: int
+    rejected: int
+    duplicate: int
+    warnings: list[tuple[str, str]]
+    naive_timestamps: int
+    unmapped_labels: list[str]
+
+
+def _insert_chunk(
+    session: Session, batch: IngestionBatch, rows: _ChunkRows, category_ids: dict[str, int]
+) -> _ChunkResult:
+    """The heavy part of a chunk (inside the caller's transaction); touches no shared state."""
+    chunk = rows.chunk
+    repo.use_generic_plans(session)
+    valid = [p for p in chunk if p.event is not None]
+    raw_ids = repo.insert_raw_records(session, rows.raw_rows)
+
+    assets = _AssetIndex([])
+    if valid:
+        ips = {
+            v for p in valid if p.event for v in (p.event.get("src_ip"), p.event.get("dst_ip")) if v
+        }
+        hosts = {p.event["host_name"] for p in valid if p.event and p.event.get("host_name")}
+        assets = _AssetIndex(repo.find_asset_versions(session, sorted(ips), sorted(hosts)))
+
+    event_rows = []
+    for i, row in rows.event_rows:
+        row["src_asset_key"], row["dst_asset_key"] = assets.resolve(row)
+        row["raw_record_id"] = raw_ids[i]
+        event_rows.append(row)
+    inserted = repo.insert_events(session, event_rows)
+    new_keys = {(fp, t): eid for eid, t, fp in inserted}
+
+    truths = []
+    unmapped: list[str] = []
+    for p in valid:
+        assert p.event is not None
+        identity = (p.event["event_fingerprint"], p.event["event_time"])
+        event_id = new_keys.pop(identity, None)  # pop: in-chunk duplicates get no second label
+        if event_id is not None and p.ground_truth is not None:
+            gt = p.ground_truth
+            truths.append(
+                {
+                    "event_id": event_id,
+                    "event_time": p.event["event_time"],
+                    "label_raw": make_storable(gt.label_raw)[0],
+                    "attack_category_id": category_ids.get(gt.category_code)
+                    if gt.category_code
+                    else None,
+                    "is_attack": gt.is_attack,
+                    "mapping_status": gt.mapping_status,
+                    "label_mapping_version": gt.mapping_version,
+                }
+            )
+            if gt.mapping_status != "mapped":
+                unmapped.append(gt.label_raw)
+    repo.insert_ground_truth(session, truths)
+
+    rejections = [
+        {
+            "batch_id": batch.batch_id,
+            "raw_record_id": raw_id,
+            "record_number": p.raw.record_number,
+            "error_code": p.rejection.code,
+            "field_name": p.rejection.field,
+            "error_detail": make_storable(p.rejection.detail[:1024])[0],
+        }
+        for p, raw_id in zip(chunk, raw_ids, strict=True)
+        if p.rejection is not None
+    ]
+    repo.insert_rejections(session, rejections)
+    return _ChunkResult(
+        loaded=len(inserted),
+        rejected=len(rejections),
+        duplicate=len(valid) - len(inserted),
+        warnings=[w for p in valid for w in p.warnings],
+        naive_timestamps=sum(int(p.naive_timestamp) for p in valid),
+        unmapped_labels=unmapped,
+    )
+
+
+def _apply_result(state: _LoadState, rows: _ChunkRows, result: _ChunkResult) -> None:
+    """Fold one chunk into the batch state (called in commit order)."""
+    state.metadata.update(rows.adapter_metadata)
+    if result.unmapped_labels:
+        labels = state.metadata.setdefault("unmapped_labels", {})
+        for label in result.unmapped_labels:
+            if len(labels) < 200 or label in labels:
+                labels[label] = labels.get(label, 0) + 1
+    for field_name, code in result.warnings:
+        state.warn(field_name, code)
+    state.naive_timestamps += result.naive_timestamps
+    state.metadata["field_warnings"] = state.warnings
+    state.metadata["naive_timestamps"] = state.naive_timestamps
+    state.total += len(rows.chunk)
+    state.rejected += result.rejected
+
+
+def _write_chunk(
+    factory: sessionmaker[Session],
+    batch: IngestionBatch,
+    rows: _ChunkRows,
+    seq: int,
+    order: _CommitOrder,
+    category_ids: dict[str, int],
+    state: _LoadState,
+    settings: Settings,
+    progress: Callable[[int, int | None, str], None] | None,
+    check_cancel: Callable[[], None] | None,
+) -> None:
+    """Write one chunk on its own connection; commit only after all earlier chunks."""
+    committed = False
+    try:
+        with factory() as session:
+            with session.begin():
+                try:
+                    # Backstop: a chunk holding locks waits for its turn in Python, which
+                    # PostgreSQL cannot see as part of a deadlock. Concurrent batches of one
+                    # source could still form such a cycle; time out instead of hanging.
+                    repo.set_lock_timeout(session, CHUNK_LOCK_TIMEOUT_MS)
+                    result = _insert_chunk(session, batch, rows, category_ids)
+                except OperationalError as exc:
+                    if not isinstance(exc.orig, psycopg.errors.LockNotAvailable):
+                        raise
+                    raise BatchFatalError(
+                        E.LOCK_TIMEOUT,
+                        "waited too long for rows locked by another load; retry to resume",
+                    ) from exc
+                order.wait_turn(seq)
+                # --- ordered phase: everything below runs in chunk order ---
+                if check_cancel is not None:
+                    try:
+                        check_cancel()
+                    except Exception as exc:
+                        raise BatchFatalError(
+                            E.CANCELLED, "cancelled on request; retry to resume"
+                        ) from exc
+                _apply_result(state, rows, result)
+                repo.add_progress(
+                    session,
+                    batch.batch_id,
+                    total=len(rows.chunk),
+                    loaded=result.loaded,
+                    rejected=result.rejected,
+                    duplicate=result.duplicate,
+                    last_record=rows.chunk[-1].raw.record_number,
+                    metadata=state.metadata,
+                    now=clock.now(),
+                )
+            committed = True
+        too_many_rejected = (
+            state.total >= REJECTION_CHECK_AFTER
+            and state.rejected / state.total > settings.max_reject_ratio
+        )
+        order.finish(seq, committed=True, stop_later=too_many_rejected)
+        if progress is not None:
+            progress(state.total, None, "records")
+        if too_many_rejected:
+            raise BatchFatalError(
+                E.ADAPTER_MISMATCH_SUSPECTED,
+                f"{state.rejected} of {state.total} records rejected "
+                f"(> {settings.max_reject_ratio:.0%}); check the adapter and variant",
+            )
+    except BaseException:
+        if not committed:
+            order.finish(seq, committed=False)
+        raise
 
 
 def process_batch(
@@ -692,7 +838,7 @@ def process_batch(
             if adapter_cls.label_mapping:
                 mapping = load_mapping(adapter_cls.label_mapping)
             _load_file(
-                session,
+                factory,
                 batch,
                 adapter,
                 mapping,
@@ -728,7 +874,7 @@ def process_batch(
 
 
 def _load_file(
-    session: Session,
+    factory: sessionmaker[Session],
     batch: IngestionBatch,
     adapter: Adapter,
     mapping: LabelMapping | None,
@@ -746,78 +892,102 @@ def _load_file(
     resume_after = batch.last_committed_record
     if resume_after:
         state.metadata["resumed_after_record"] = resume_after
-    with path.open("rb") as fh:
-        chunk: list[Prepared] = []
-        for raw in adapter.read(fh):
-            if raw.record_number <= resume_after:
-                continue
-            chunk.append(prepare_record(adapter, raw, mapping))
-            if len(chunk) >= settings.ingest_chunk_size:
-                _commit_chunk(
-                    session,
-                    batch,
-                    chunk,
-                    category_ids,
-                    state,
-                    adapter,
-                    settings,
-                    progress,
-                    check_cancel,
-                )
-                chunk = []
-        if chunk:
-            _commit_chunk(
-                session,
-                batch,
-                chunk,
-                category_ids,
-                state,
-                adapter,
-                settings,
-                progress,
-                check_cancel,
-            )
 
+    # Records are read and prepared on this thread; chunks are written by
+    # ``settings.ingest_writers`` threads, each on its own connection, and commit strictly
+    # in order (``_CommitOrder``), so ``last_committed_record`` and resume semantics are
+    # those of a sequential load. psycopg releases the GIL while PostgreSQL works.
+    order = _CommitOrder()
+    writers = max(1, settings.ingest_writers)
+    if isinstance(factory.kw.get("bind"), Connection):
+        # Every session shares one connection (test harness); a connection must never be
+        # used from two threads at once, so write one chunk at a time.
+        writers = 1
+    # Each in-flight chunk with the event identities it may insert (uncommitted until done).
+    in_flight: deque[tuple[Future[None], set[tuple[str, datetime]]]] = deque()
+    ensured_months: set[tuple[int, int]] = set()
 
-def _commit_chunk(
-    session: Session,
-    batch: IngestionBatch,
-    chunk: list[Prepared],
-    category_ids: dict[str, int],
-    state: _LoadState,
-    adapter: Adapter,
-    settings: Settings,
-    progress: Callable[[int, int | None, str], None] | None,
-    check_cancel: Callable[[], None] | None,
-) -> None:
-    if check_cancel is not None:
-        try:
-            check_cancel()
-        except Exception as exc:
-            raise BatchFatalError(E.CANCELLED, "cancelled on request; retry to resume") from exc
-    state.metadata.update(_adapter_metadata(adapter, None, state, partial=True))
-    _flush_chunk(session, batch, chunk, category_ids, state)
-    if progress is not None:
-        progress(state.total, None, "records")
-    if (
-        state.total >= REJECTION_CHECK_AFTER
-        and state.rejected / state.total > settings.max_reject_ratio
-    ):
-        raise BatchFatalError(
-            E.ADAPTER_MISMATCH_SUSPECTED,
-            f"{state.rejected} of {state.total} records rejected "
-            f"(> {settings.max_reject_ratio:.0%}); check the adapter and variant",
+    def drain(limit: int) -> None:
+        while len(in_flight) > limit:
+            in_flight[0][0].result()  # in submission order: the first failure wins
+            in_flight.popleft()
+
+    def dispatch(pool: ThreadPoolExecutor, chunk: list[Prepared], seq: int) -> None:
+        rows = _build_rows(batch, chunk, adapter)
+        drain(writers - 1)
+        # An event already in an uncommitted earlier chunk is a duplicate here. Dropping it
+        # up front means no chunk ever blocks on another chunk's uncommitted rows (a later
+        # chunk inserting first would otherwise deadlock with the commit order).
+        held = set().union(*(ids for _, ids in in_flight))
+        identities: set[tuple[str, datetime]] = set()
+        kept = []
+        for i, row in rows.event_rows:
+            key = (row["event_fingerprint"], row["event_time"])
+            if key not in held:
+                identities.add(key)
+                kept.append((i, row))
+        rows.event_rows = kept
+        if kept:
+            times = [row["event_time"] for _, row in kept]
+            months = {(t.astimezone(UTC).year, t.astimezone(UTC).month) for t in times}
+            if not months <= ensured_months:
+                # Creating a partition locks the parent table; never do it while writes are
+                # in flight (their row locks plus the commit order could form a cycle).
+                drain(0)
+                with factory() as session, session.begin():
+                    repo.ensure_partitions(session, min(times), max(times))
+                ensured_months.update(months)
+        future = pool.submit(
+            _write_chunk,
+            factory,
+            batch,
+            rows,
+            seq,
+            order,
+            category_ids,
+            state,
+            settings,
+            progress,
+            check_cancel,
         )
+        in_flight.append((future, identities))
+
+    with ThreadPoolExecutor(max_workers=writers, thread_name_prefix="ingest-writer") as pool:
+        try:
+            seq = 0
+            with path.open("rb") as fh:
+                chunk: list[Prepared] = []
+                for raw in adapter.read(fh):
+                    if raw.record_number <= resume_after:
+                        continue
+                    chunk.append(prepare_record(adapter, raw, mapping))
+                    if len(chunk) >= settings.ingest_chunk_size:
+                        dispatch(pool, chunk, seq)
+                        seq += 1
+                        chunk = []
+                if chunk:
+                    dispatch(pool, chunk, seq)
+            drain(0)
+        except BaseException as exc:
+            # Let in-flight writes finish (each commits or rolls back on its own) and report
+            # the earliest real failure rather than a follow-on abort.
+            first: BaseException | None = None if isinstance(exc, _ChunkAborted) else exc
+            while in_flight:
+                error = in_flight.popleft()[0].exception()
+                if first is None and error is not None and not isinstance(error, _ChunkAborted):
+                    first = error
+            if first is None or first is exc:
+                raise
+            raise first from None
 
 
 def _adapter_metadata(
-    adapter: Adapter | None, timezone: str | None, state: _LoadState, *, partial: bool = False
+    adapter: Adapter | None, timezone: str | None, state: _LoadState
 ) -> dict[str, Any]:
     if adapter is None:
         return {}
     meta: dict[str, Any] = {"encodings": dict(adapter.stats.encodings), **adapter.metadata}
-    if not partial:
-        meta["timezone_used"] = timezone if state.naive_timestamps else None
+    meta["timezone_used"] = timezone if state.naive_timestamps else None
     return meta
 
 

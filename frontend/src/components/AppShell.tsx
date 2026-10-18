@@ -1,8 +1,11 @@
+import { Suspense, useSyncExternalStore } from "react";
 import { NavLink, Outlet } from "react-router";
 
 import type { User } from "../api/types";
 import { hasRole, useLogout } from "../hooks/useSession";
+import { getTimeDisplay, setTimeDisplay, subscribeTimeDisplay } from "../lib/format";
 import { NAV_PAGES } from "../lib/navigation";
+import { LoadingSkeleton } from "./States";
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
   `block rounded px-3 py-1.5 text-sm ${
@@ -12,6 +15,7 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
 export function AppShell({ user }: { user: User }) {
   const logout = useLogout();
   const items = NAV_PAGES.filter((item) => hasRole(user, item.minRole));
+  const timeDisplay = useSyncExternalStore(subscribeTimeDisplay, getTimeDisplay);
 
   return (
     <div className="flex h-full">
@@ -36,6 +40,18 @@ export function AppShell({ user }: { user: User }) {
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-end gap-4 border-b border-line bg-surface px-6 py-3 text-sm">
+          <label className="flex items-center gap-2">
+            <span className="text-muted">Times shown in</span>
+            <select
+              aria-label="Time display"
+              className="rounded border border-line bg-surface px-2 py-1"
+              value={timeDisplay}
+              onChange={(e) => setTimeDisplay(e.target.value === "local" ? "local" : "utc")}
+            >
+              <option value="utc">UTC</option>
+              <option value="local">Local time</option>
+            </select>
+          </label>
           <span>
             Signed in as <strong>{user.username}</strong>{" "}
             <span className="text-muted">({user.role})</span>
@@ -49,8 +65,11 @@ export function AppShell({ user }: { user: User }) {
             Sign out
           </button>
         </header>
-        <main className="flex-1 overflow-auto p-6">
-          <Outlet />
+        {/* Keyed so every formatted time re-renders when the display preference changes. */}
+        <main key={timeDisplay} className="flex-1 overflow-auto p-6">
+          <Suspense fallback={<LoadingSkeleton label="Loading page" />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>
