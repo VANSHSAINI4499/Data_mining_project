@@ -1,3 +1,5 @@
+* [ ] 
+
 # Security Requirements
 
 CTI Warehouse processes **untrusted, potentially hostile data** (attack traffic logs, IDS signatures, threat indicators, command lines). Every requirement here is testable; tests are listed in [TESTING_STRATEGY.md](TESTING_STRATEGY.md). Deployment assumption for the MVP: single tenant, trusted local network, not exposed to the internet ([PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md#12-assumptions)).
@@ -14,16 +16,16 @@ CTI Warehouse processes **untrusted, potentially hostile data** (attack traffic 
 
 ## 2. Role-based authorization
 
-| Capability | viewer | analyst | admin |
-|---|:-:|:-:|:-:|
-| Read dashboards, events, results, alerts, cases, models, indicators | ✓ | ✓ | ✓ |
-| View raw records and rejected-record details | | ✓ | ✓ |
-| Upload event files; retry batches | | ✓ | ✓ |
-| Start scoring, matching, correlation runs | | ✓ | ✓ |
-| Change alert status, escalate, manage cases, add notes, submit feedback | | ✓ | ✓ |
-| Train models, promote/archive/reject models, acknowledge leakage warnings | | | ✓ |
-| Manage sources, assets, feeds, indicators, correlation rules | | | ✓ |
-| Manage users; view audit records; run retention | | | ✓ |
+| Capability                                                                | viewer | analyst | admin |
+| ------------------------------------------------------------------------- | :----: | :-----: | :---: |
+| Read dashboards, events, results, alerts, cases, models, indicators       |   ✓   |   ✓   |  ✓  |
+| View raw records and rejected-record details                              |        |   ✓   |  ✓  |
+| Upload event files; retry batches                                         |        |   ✓   |  ✓  |
+| Start scoring, matching, correlation runs                                 |        |   ✓   |  ✓  |
+| Change alert status, escalate, manage cases, add notes, submit feedback   |        |   ✓   |  ✓  |
+| Train models, promote/archive/reject models, acknowledge leakage warnings |        |        |  ✓  |
+| Manage sources, assets, feeds, indicators, correlation rules              |        |        |  ✓  |
+| Manage users; view audit records; run retention                           |        |        |  ✓  |
 
 - Enforced server-side by a dependency on every route (`require_role("analyst")`); route registration fails in tests if a route lacks a declared role (except health/login).
 - Default deny: unknown roles have no permissions.
@@ -39,7 +41,7 @@ CTI Warehouse processes **untrusted, potentially hostile data** (attack traffic 
 
 ## 4. Upload validation and safe parsing
 
-Based on the OWASP File Upload Cheat Sheet (<https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html>, verified):
+Based on the OWASP File Upload Cheat Sheet ([https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html](https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html), verified):
 
 - Authenticated, authorised (analyst+) and CSRF-protected.
 - Extension allowlist (`.csv .tsv .log .json .jsonl .ndjson`); content sniff rejects binary content (NUL bytes in first 8 KiB) and obvious format mismatch.
@@ -58,15 +60,13 @@ Based on the OWASP File Upload Cheat Sheet (<https://cheatsheetseries.owasp.org/
 - CSV exports (if added) neutralise formula injection by prefixing cells starting with `= + - @ \t \r` with `'`.
 - Log lines include record numbers and error codes, not full raw payloads.
 - STIX patterns are parsed by a restricted tokenizer; unsupported constructs are stored, never evaluated ([THREAT_INTELLIGENCE.md](THREAT_INTELLIGENCE.md#8-stixtaxii-integration)).
-
-## 6. SQL injection prevention
+- [ ] 6. SQL injection prevention
 
 - All queries via SQLAlchemy Core/ORM with bound parameters. `text()` is allowed only with bound parameters and static SQL (e.g., partition functions in migrations), reviewed explicitly.
 - Dynamic identifiers (sort keys, group-by dimensions, aggregation metrics) come from **allowlisted enums** mapped to column objects — never string-interpolated.
 - No endpoint accepts SQL, expressions, or arbitrary filter DSL; correlation rules use an allowlisted DSL compiled to SQLAlchemy ([ATTACK_CORRELATION.md](ATTACK_CORRELATION.md#3-rule-definition)).
 - The application DB role is not a superuser; in production it lacks DDL rights (migrations run with a separate migration role) and lacks `UPDATE`/`DELETE` on `audit_log`. Implemented by `cti db grant-app-role` ([DEPLOYMENT_GUIDE.md §4.1](DEPLOYMENT_GUIDE.md)); the two runtime operations needing more (partition creation, audit-log retention with a 364-day floor) are `SECURITY DEFINER` functions with a fixed `search_path` and `EXECUTE` revoked from `PUBLIC` (migration `9d3e5a7c2b18`). Development may still use one role for both.
-
-## 7. Audit logging
+- [ ] 7. Audit logging
 
 - Every state-changing action writes an `audit_log` row in the **same transaction** as the change: login/logout/failed login, user/role changes, source/feed/rule/asset changes, uploads, batch retries, training/scoring/matching/correlation job starts, model promotion/archive/reject, leakage acknowledgements, alert/case transitions, notes, feedback, retention runs, CLI operations (`actor_type = cli`).
 - Authorization denials on state-changing endpoints are audited with `outcome = denied`.
@@ -81,7 +81,7 @@ Based on the OWASP File Upload Cheat Sheet (<https://cheatsheetseries.owasp.org/
 
 ## 9. ML artifact safety
 
-- joblib/pickle can execute arbitrary code on load (scikit-learn model persistence docs: <https://scikit-learn.org/stable/model_persistence.html>, verified). Therefore:
+- joblib/pickle can execute arbitrary code on load (scikit-learn model persistence docs: [https://scikit-learn.org/stable/model_persistence.html](https://scikit-learn.org/stable/model_persistence.html), verified). Therefore:
   - Only artifacts **produced by this system's training jobs** are loaded.
   - No API or UI path uploads or imports artifacts.
   - Loading checks the path is within `CTI_ARTIFACT_DIR` and the SHA-256 equals the registry value before deserialising.
